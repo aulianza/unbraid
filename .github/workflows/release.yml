@@ -8,7 +8,9 @@ permissions:
   # Required for npm Trusted Publishing: GitHub mints a short-lived OIDC token
   # that npm verifies, so no long-lived npm token is ever stored here.
   id-token: write
-  contents: read
+  # Required to create the GitHub release. With `read` this job publishes to npm
+  # successfully and then fails to cut a release with a 403.
+  contents: write
 
 jobs:
   publish:
@@ -75,7 +77,10 @@ jobs:
       # No NODE_AUTH_TOKEN: authentication is the OIDC token from `id-token`.
       - run: npm publish
 
+      # No `|| true`. Swallowing the exit code here hid a 403 for four releases
+      # while the job kept reporting success — a step that cannot fail cannot
+      # tell you anything.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag || true
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
