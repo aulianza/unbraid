@@ -1,6 +1,6 @@
 {
   "name": "unbraid",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Unbraid a tangled working tree into atomic commits, with AI-written messages.",
   "keywords": [
     "git",
@@ -33,7 +33,8 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

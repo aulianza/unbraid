@@ -12,12 +12,15 @@ import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } fr
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Config } from '../core/config/schema.js'
 
+/** Replaced at build time by tsup; see tsup.config.ts. */
+declare const __UNBRAID_VERSION__: string
+
 const program = new Command()
 
 program
   .name('unbraid')
   .description('Unbraid a tangled working tree into atomic commits, with AI-written messages.')
-  .version('0.0.0')
+  .version(__UNBRAID_VERSION__)
 
 interface CommonFlags {
   granularity?: string

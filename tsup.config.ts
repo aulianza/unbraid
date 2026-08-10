@@ -1,6 +1,14 @@
 import { defineConfig } from 'tsup'
+import { readFileSync } from 'node:fs'
+
+const { version } = JSON.parse(readFileSync('./package.json', 'utf8')) as {
+  version: string
+}
 
 export default defineConfig({
+  // Injected at build time so `unbraid --version` can never drift from
+  // package.json, which is what a hardcoded string in the CLI eventually does.
+  define: { __UNBRAID_VERSION__: JSON.stringify(version) },
   entry: ['src/cli/index.ts', 'src/index.ts'],
   format: ['esm'],
   target: 'node20',
