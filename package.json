@@ -23,7 +23,7 @@
     "node": ">=20"
   },
   "bin": {
-    "unbraid": "./dist/cli/index.js"
+    "unbraid": "dist/cli/index.js"
   },
   "files": [
     "dist"
