@@ -10,9 +10,13 @@ spend 30 minutes staging them by hand, or throw them all into `misc: updates`.
 `unbraid` reads the whole tree, works out which changes belong together, writes a real
 message for each one, and shows you the plan before it touches anything.
 
-[![npm](https://img.shields.io/npm/v/unbraid)](https://www.npmjs.com/package/unbraid)
+[![npm version](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
+[![npm downloads](https://img.shields.io/npm/dm/unbraid?color=cb3837)](https://www.npmjs.com/package/unbraid)
+[![node](https://img.shields.io/node/v/unbraid)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+
+**[npm](https://www.npmjs.com/package/unbraid)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
 
 </div>
 
@@ -37,25 +41,22 @@ One command. Six atomic commits. One push.
 
 ---
 
-## Why not `aicommits` or `OpenCommit`?
+## What makes it different
 
-Those tools are good, and they solve a different half of the problem. Both write a message
-for files **you have already staged** — one message, one commit. The staging is still on you,
-and the staging is the part that takes thirty minutes.
+Most AI commit tools write a message for the files **you have already staged** — one message,
+one commit. That solves the writing. It leaves you the staging, and the staging is the part
+that costs thirty minutes.
 
-`unbraid` starts one step earlier.
+`unbraid` starts one step earlier:
 
-|  | aicommits / OpenCommit | unbraid |
-| --- | :---: | :---: |
-| Writes the commit message | ✅ | ✅ |
-| **Decides which files belong together** | ❌ | ✅ |
-| **Creates multiple commits in one run** | ❌ | ✅ |
-| Matches your repo's existing message style | ❌ | ✅ |
-| Works with a Claude subscription, no API key | ❌ | ✅ |
-| Review and edit the plan before it commits | ❌ | ✅ |
+- **It decides which files belong together**, not just what to call them
+- **It creates several commits in one run**, so 52 files become 6 coherent commits
+- **It shows you the plan first** — reorder, merge, rename, or remove before anything is written
+- **It runs on a Claude Code subscription** with no API key and no per-token cost
+- **It reads your repo's history**, reusing the scopes and types you already use
 
-If you already stage by hand and just want a better message, use theirs — it's a smaller tool
-for a smaller job. If the staging is what's costing you, that's this.
+If you're happy staging by hand and just want a better message, a smaller tool will serve you
+better. If the staging is the expensive part, that's what this is for.
 
 ## Status
 
@@ -77,7 +78,8 @@ npx unbraid
 npm i -g unbraid
 ```
 
-Requires `git` and Node 20+.
+Requires `git` and Node 20+. Published at
+[npmjs.com/package/unbraid](https://www.npmjs.com/package/unbraid).
 
 ## Quick start
 
