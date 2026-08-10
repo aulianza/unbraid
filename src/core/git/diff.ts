@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import picomatch from 'picomatch'
-import type { Git } from './exec.js'
+import { splitNul, type Git } from './exec.js'
 import type { FileChange } from '../engine/types.js'
 
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
@@ -64,8 +64,9 @@ export async function collectDiffs(
       continue
     }
 
-    const raw =
-      file.status === 'untracked'
+    const raw = file.collapsed
+      ? await describeCollapsedDir(git, file.path, file.fileCount ?? 0)
+      : file.status === 'untracked'
         ? await readUntrackedAsDiff(join(root, file.path), file.path)
         : (await git.runRaw(['diff', base, '--', file.path])).stdout
 
@@ -97,6 +98,40 @@ function truncate(
     text: `${kept}\n… ${hidden} more line${hidden === 1 ? '' : 's'} truncated`,
     truncated: true,
   }
+}
+
+/**
+ * Summarise a collapsed untracked directory as a file listing.
+ *
+ * Sending the contents of a scaffolded app is both impossible (context) and
+ * pointless (the model does not need to read a framework template to know it is
+ * a framework template). A sample of paths conveys what it is in a few hundred
+ * bytes.
+ */
+async function describeCollapsedDir(
+  git: Git,
+  dir: string,
+  fileCount: number,
+): Promise<string> {
+  const listing = await git.runRaw([
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+    '--',
+    dir,
+  ])
+  const paths = listing.code === 0 ? splitNul(listing.stdout) : []
+  const sample = paths.slice(0, 30)
+
+  return [
+    `New untracked directory: ${dir}`,
+    `Contains ${fileCount} files. Contents not shown. Sample:`,
+    ...sample.map((p) => `  ${p}`),
+    paths.length > sample.length ? `  … ${paths.length - sample.length} more` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 /**

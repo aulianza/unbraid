@@ -21,7 +21,23 @@ const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
  * `git add -N` to make untracked files visible to `git diff` — that would mutate
  * the index and destroy our ability to tell what the user had already staged.
  */
-export async function readWorkingTree(git: Git): Promise<WorkingTreeState> {
+export interface ReadOptions {
+  /**
+   * An untracked directory holding more than this many files is reported as a
+   * single entry rather than expanded.
+   *
+   * Without a limit, adding a scaffolded app (a fresh Next.js project, say)
+   * turns three status entries into nine hundred, which no model can group and
+   * no human wants to review. Set to `Infinity` to always expand.
+   */
+  expandUntrackedDirsUpTo?: number
+}
+
+export async function readWorkingTree(
+  git: Git,
+  options: ReadOptions = {},
+): Promise<WorkingTreeState> {
+  const { expandUntrackedDirsUpTo = 10 } = options
   const root = (await git.run(['rev-parse', '--show-toplevel'])).trim()
 
   const headResult = await git.runRaw(['rev-parse', 'HEAD'])
@@ -31,7 +47,7 @@ export async function readWorkingTree(git: Git): Promise<WorkingTreeState> {
   const branch = branchResult.code === 0 ? branchResult.stdout.trim() : null
   const detached = branchResult.code !== 0 && head !== null
 
-  const files = await readStatus(git)
+  const files = await readStatus(git, expandUntrackedDirsUpTo)
   await attachLineCounts(git, root, files, head)
 
   return {
@@ -58,12 +74,18 @@ export async function readWorkingTree(git: Git): Promise<WorkingTreeState> {
  * The `2` record is the awkward one: its original path is a *separate*
  * NUL-delimited field, so the iterator has to consume an extra token.
  */
-async function readStatus(git: Git): Promise<FileChange[]> {
+async function readStatus(
+  git: Git,
+  expandUpTo: number,
+): Promise<FileChange[]> {
+  // `normal` (not `all`) so untracked directories arrive collapsed as a single
+  // "dir/" entry. Expanding is then a decision we make per directory, rather
+  // than something git does for us across the whole tree.
   const raw = await git.run([
     'status',
     '--porcelain=v2',
     '-z',
-    '--untracked-files=all',
+    '--untracked-files=normal',
   ])
 
   const tokens = splitNul(raw)
@@ -76,7 +98,12 @@ async function readStatus(git: Git): Promise<FileChange[]> {
     const kind = token[0]!
 
     if (kind === '?') {
-      files.push(blank(token.slice(2), 'untracked', false))
+      const path = token.slice(2)
+      if (path.endsWith('/')) {
+        files.push(...(await expandUntrackedDir(git, path, expandUpTo)))
+      } else {
+        files.push(blank(path, 'untracked', false))
+      }
       continue
     }
 
@@ -104,6 +131,42 @@ async function readStatus(git: Git): Promise<FileChange[]> {
   }
 
   return files
+}
+
+/**
+ * Decide whether an untracked directory is worth expanding into its files.
+ *
+ * Small directories are expanded so their files can be split across commits.
+ * Large ones are kept whole: a freshly scaffolded app is one logical change, and
+ * listing every file of it helps nobody. Staging the directory path stages
+ * everything under it, so the "never lose a file" invariant still holds.
+ */
+async function expandUntrackedDir(
+  git: Git,
+  dir: string,
+  expandUpTo: number,
+): Promise<FileChange[]> {
+  const listing = await git.runRaw([
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+    '--',
+    dir,
+  ])
+  if (listing.code !== 0) return [blank(dir, 'untracked', false)]
+
+  const paths = splitNul(listing.stdout).filter((p) => p.length > 0)
+  if (paths.length === 0) return []
+
+  if (paths.length <= expandUpTo) {
+    return paths.map((p) => blank(p, 'untracked', false))
+  }
+
+  const collapsed = blank(dir, 'untracked', false)
+  collapsed.collapsed = true
+  collapsed.fileCount = paths.length
+  return [collapsed]
 }
 
 function statusFromXY(xy: string): FileStatus {
@@ -159,7 +222,9 @@ async function attachLineCounts(
         file.binary = stat.binary
         return
       }
-      if (file.status === 'untracked') {
+      // A collapsed directory has no single content to measure; `fileCount`
+      // is the meaningful size signal for it.
+      if (file.status === 'untracked' && !file.collapsed) {
         Object.assign(file, await measureUntracked(join(root, file.path)))
       }
     }),

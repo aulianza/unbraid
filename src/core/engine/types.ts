@@ -25,6 +25,13 @@ export interface FileChange {
   insertions: number
   deletions: number
   binary: boolean
+  /**
+   * True when `path` is an untracked directory standing in for the files
+   * beneath it. Staging the directory stages all of them, so no file is lost.
+   */
+  collapsed?: boolean
+  /** How many files a collapsed directory represents. */
+  fileCount?: number
 }
 
 /** An in-progress git operation that makes it unsafe to create commits. */
