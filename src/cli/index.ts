@@ -9,7 +9,7 @@ import { readWorkingTree } from '../core/git/read.js'
 import { buildPlan, PipelineError } from './pipeline.js'
 import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
-import type { CommitPlan } from '../core/engine/types.js'
+import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Config } from '../core/config/schema.js'
 
 const program = new Command()
@@ -45,6 +45,41 @@ function addCommonOptions(command: Command): Command {
     .option('-m, --model <model>', 'model id or alias')
     .option('--force', 'proceed on a detached HEAD')
     .option('--no-guard', 'skip the credential check')
+}
+
+/**
+ * Run the full-screen review editor and resolve with the user's decision.
+ *
+ * Imported lazily so that `plan --json`, `apply`, and `config` never pay to load
+ * React and Ink — which is most of unbraid's startup cost.
+ */
+async function runReview(
+  plan: CommitPlan,
+  state: WorkingTreeState,
+): Promise<{ outcome: 'commit' | 'cancel'; plan: CommitPlan }> {
+  const [{ render }, React, { Review }] = await Promise.all([
+    import('ink'),
+    import('react'),
+    import('./ui/App.js'),
+  ])
+
+  return new Promise((resolve) => {
+    let settled: { outcome: 'commit' | 'cancel'; plan: CommitPlan } | null = null
+
+    const instance = render(
+      React.createElement(Review, {
+        plan,
+        state,
+        onDone: (outcome, edited) => {
+          settled = { outcome, plan: edited }
+        },
+      }),
+    )
+
+    void instance.waitUntilExit().then(() => {
+      resolve(settled ?? { outcome: 'cancel', plan })
+    })
+  })
 }
 
 async function confirm(question: string): Promise<boolean> {
@@ -118,30 +153,44 @@ addCommonOptions(
         const { config } = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
         const { git, state, plan } = await planWithProgress(cwd, config, flags)
 
-        console.log('')
-        console.log(renderPlan(plan, state))
+        if (flags.dryRun || !process.stdin.isTTY) {
+          console.log('')
+          console.log(renderPlan(plan, state))
+        }
 
         if (flags.dryRun) {
           console.log(dim('Dry run — nothing was committed.'))
           return
         }
 
-        const proceed =
-          flags.yes ||
-          config.execute.autoconfirm ||
-          (await confirm(
+        const skipReview = flags.yes || config.execute.autoconfirm
+        let approved = plan
+
+        if (skipReview) {
+          // Nothing to confirm; fall through and commit the plan as generated.
+        } else if (process.stdin.isTTY) {
+          const review = await runReview(plan, state)
+          if (review.outcome === 'cancel') {
+            console.log(dim('Cancelled. Nothing was committed.'))
+            return
+          }
+          approved = review.plan
+        } else {
+          // Piped or non-interactive: the full-screen editor cannot run, so fall
+          // back to a plain prompt rather than committing without asking.
+          const proceed = await confirm(
             `Create ${plan.commits.length} commits from ${describeFileCount(
               plan.commits.flatMap((c) => c.files),
               state,
             )}?`,
-          ))
-
-        if (!proceed) {
-          console.log(dim('Cancelled. Nothing was committed.'))
-          return
+          )
+          if (!proceed) {
+            console.log(dim('Cancelled. Nothing was committed.'))
+            return
+          }
         }
 
-        const result = await executePlan(git, plan, {
+        const result = await executePlan(git, approved, {
           verify: config.execute.verify,
           onCommit: (_id, sha, index, count) =>
             console.log(green(`  ✓ ${index}/${count}  ${sha.slice(0, 8)}`)),
