@@ -43,6 +43,8 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "picomatch": "^4.0.5"
+    "picomatch": "^4.0.5",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76"
   }
 }
