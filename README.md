@@ -60,9 +60,8 @@ better. If the staging is the expensive part, that's what this is for.
 
 ## Status
 
-**v0.1 — early, but real.** Splitting, message generation, the review screen, atomic commits
-with rollback, and all three providers work and are covered by tests. Anything still unbuilt
-is marked 🚧 below.
+**v0.2 — early, but real.** Splitting, message generation, the review screen, atomic commits
+with rollback, PR drafting, and all three providers work and are covered by tests.
 
 Expect rough edges at this stage. Issues and PRs welcome — see
 [CONTRIBUTING.md](CONTRIBUTING.md), and [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it
@@ -96,7 +95,7 @@ existing subscription — no key, no per-token cost.
 unbraid --push          # commit, then one push at the end
 unbraid --dry-run       # show me the plan, change nothing
 unbraid --granularity fine   # more commits, smaller scope
-unbraid pr              # draft a PR title + body from this branch  🚧
+unbraid pr              # draft a PR title + body from this branch
 ```
 
 ## How it works
@@ -232,7 +231,7 @@ This is also the seam the desktop app is built on — see below.
 ## Roadmap
 
 - [x] **v1 — the CLI.** File-level grouping, AI messages, review TUI, atomic commits, push.
-- [ ] **`unbraid pr`.** Draft a PR title and body from the branch's commits.
+- [x] **`unbraid pr`.** Draft a PR title and body from the branch's commits.
 - [ ] **v2 — macOS app.** A native SwiftUI shell over the same engine, driving it through
       `plan --json`. The point is visual diff review: seeing the actual hunks while you drag
       files between commits. Not a rewrite — the grouping logic stays in one place.
