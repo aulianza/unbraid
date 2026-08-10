@@ -10,6 +10,7 @@ spend 30 minutes staging them by hand, or throw them all into `misc: updates`.
 `unbraid` reads the whole tree, works out which changes belong together, writes a real
 message for each one, and shows you the plan before it touches anything.
 
+[![CI](https://github.com/aulianza/unbraid/actions/workflows/ci.yml/badge.svg)](https://github.com/aulianza/unbraid/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
 [![npm downloads](https://img.shields.io/npm/dm/unbraid?color=cb3837)](https://www.npmjs.com/package/unbraid)
 [![node](https://img.shields.io/node/v/unbraid)](https://nodejs.org)

@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  # Required for npm Trusted Publishing: GitHub mints a short-lived OIDC token
+  # that npm verifies, so no long-lived npm token is ever stored here.
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          # Trusted publishing requires Node >= 22.14 and npm >= 11.5.1.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # Never cache in a release build: a poisoned cache would end up
+          # inside a published artifact.
+          package-manager-cache: false
+
+      # Trusted publishing needs npm >= 11.5.1. Compared with node's own
+      # built-ins rather than `npx semver`: fetching a package from the network
+      # during the one workflow that must be trustworthy is a poor trade for
+      # three lines of version comparison.
+      - name: Verify npm supports trusted publishing
+        run: |
+          CURRENT="$(npm --version)"
+          echo "npm $CURRENT"
+          NEEDS_UPGRADE=$(node -e '
+            const [a, b] = [process.argv[1], "11.5.1"].map((v) =>
+              v.split(".").map(Number))
+            // Compare at the first component that differs, and only there:
+            // testing every component calls 11.6.0 older than 11.5.1.
+            const at = a.findIndex((n, i) => n !== (b[i] ?? 0))
+            const older = at !== -1 && a[at] < (b[at] ?? 0)
+            process.stdout.write(older ? "yes" : "no")
+          ' "$CURRENT")
+          if [ "$NEEDS_UPGRADE" = "yes" ]; then
+            npm install -g npm@latest
+            echo "upgraded to npm $(npm --version)"
+          fi
+
+      - name: Configure git
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+          git config --global init.defaultBranch main
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # Refuse to publish a tag that disagrees with package.json, which is the
+      # easiest way to ship 0.2.0 under the name v0.3.0 and never notice.
+      - name: Check the tag matches package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+          echo "Publishing $PKG"
+
+      # No NODE_AUTH_TOKEN: authentication is the OIDC token from `id-token`.
+      - run: npm publish
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag || true

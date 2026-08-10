@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Nothing here needs write access to anything.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+        os: [ubuntu-latest]
+        include:
+          # unbraid shells out to git and reads the terminal, both of which
+          # differ enough on macOS to be worth one job rather than assuming.
+          - node: '22'
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # The git layer is tested against real repositories, so commits made by
+      # the suite need an identity on a fresh runner.
+      - name: Configure git
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+          git config --global init.defaultBranch main
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      # A binary that builds but will not start is a real failure mode:
+      # a duplicated shebang and a bundling mistake both caused it during
+      # development, and neither showed up in the unit tests.
+      - name: Smoke test the built CLI
+        run: node dist/cli/index.js --version
