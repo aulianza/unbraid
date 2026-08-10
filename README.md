@@ -55,14 +55,16 @@ that costs thirty minutes.
 - **It shows you the plan first** — reorder, merge, rename, or remove before anything is written
 - **It runs on a Claude Code subscription** with no API key and no per-token cost
 - **It reads your repo's history**, reusing the scopes and types you already use
+- **It can split a single file** across commits when it mixes a fix and a refactor
 
 If you're happy staging by hand and just want a better message, a smaller tool will serve you
 better. If the staging is the expensive part, that's what this is for.
 
 ## Status
 
-**v0.2 — early, but real.** Splitting, message generation, the review screen, atomic commits
-with rollback, PR drafting, and all three providers work and are covered by tests.
+**v0.4 — early, but real.** Splitting, message generation, the review screen, atomic commits
+with rollback, hunk-level splitting, PR drafting, and all three providers work and are
+covered by tests.
 
 Expect rough edges at this stage. Issues and PRs welcome — see
 [CONTRIBUTING.md](CONTRIBUTING.md), and [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it
@@ -96,6 +98,7 @@ existing subscription — no key, no per-token cost.
 unbraid --push          # commit, then one push at the end
 unbraid --dry-run       # show me the plan, change nothing
 unbraid --granularity fine   # more commits, smaller scope
+unbraid --hunks         # split a file whose changes belong in different commits
 unbraid pr              # draft a PR title + body from this branch
 ```
 
@@ -158,6 +161,7 @@ grouping:
   granularity: semantic     # fine | semantic | coarse
   maxCommits: 20
   respectStaged: true      # already staged something? that stays exactly as you left it
+  hunks: false              # allow one file's changes to be split across commits
   hints:                    # your rules, applied before the AI sees anything
     - match: "(package-lock.json|pnpm-lock.yaml|bun.lock)"
       group: "chore(deps): update lockfile"
@@ -217,6 +221,37 @@ Prefer to blend in instead — contributing to someone else's project, say? Set
 `format: auto` and it matches whatever the repository already does, gitmoji and plain prose
 included.
 
+### Splitting one file across commits
+
+By default a changed file goes entirely into one commit. Sometimes that is wrong: you fixed a
+bug and renamed a variable in the same file, and they belong in different commits.
+
+```bash
+unbraid --hunks
+```
+
+With this on, unbraid offers each file's individual changes to the model and can put them in
+different commits. In the plan they show up as partial:
+
+```
+1. fix(api): handle null user in profile route
+     · src/api/user.ts (1 of its changes)
+
+2. refactor(api): rename userId to accountId
+     · src/api/user.ts (2 of its changes)
+```
+
+It is off by default because it is the newest path and most files do not mix concerns.
+
+**How it stays safe.** unbraid does not use `git apply` to peel hunks off — applying a subset
+shifts every later hunk's line numbers, so patches fail or, worse, apply in the wrong place.
+Instead it computes the exact content each commit should have, writes that into git's object
+store, and points the index at it. The working tree is never touched.
+
+Before offering to split a file at all, unbraid checks that applying *every* one of its hunks
+reproduces your working tree byte for byte. If that round trip fails, it does not understand
+that diff well enough to take it apart, and the file is committed whole instead.
+
 ## Scripting
 
 Every part of `unbraid` is available headlessly, so you can wire it into anything:
@@ -236,8 +271,8 @@ This is also the seam the desktop app is built on — see below.
 - [ ] **v2 — macOS app.** A native SwiftUI shell over the same engine, driving it through
       `plan --json`. The point is visual diff review: seeing the actual hunks while you drag
       files between commits. Not a rewrite — the grouping logic stays in one place.
-- [ ] **v2 — hunk-level splitting.** When one file mixes a bug fix and an unrelated rename,
-      split the file across commits instead of just flagging it.
+- [x] **Hunk-level splitting.** When one file mixes a bug fix and an unrelated rename,
+      split the file across commits instead of just flagging it. Enable with `--hunks`.
 - [ ] VS Code extension, `prepare-commit-msg` hook mode, and splitting commits you already made.
 
 ## Contributing

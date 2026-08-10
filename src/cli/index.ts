@@ -34,6 +34,7 @@ Examples:
   $ unbraid                     plan, review, and commit
   $ unbraid --dry-run           show the plan, change nothing
   $ unbraid -g fine             one commit per file
+  $ unbraid --hunks             split files that mix two concerns
   $ unbraid --push              commit, then push once at the end
   $ unbraid pr                  draft a pull request from this branch
   $ unbraid config              show settings and where each came from
@@ -48,6 +49,7 @@ Docs: https://github.com/aulianza/unbraid`,
 
 interface CommonFlags {
   granularity?: string
+  hunks?: boolean
   provider?: string
   model?: string
   force?: boolean
@@ -59,7 +61,12 @@ function flagsToConfig(flags: CommonFlags & { push?: boolean }): Record<string, 
   const overrides: Record<string, unknown> = {}
   if (flags.provider) overrides.provider = flags.provider
   if (flags.model) overrides.model = flags.model
-  if (flags.granularity) overrides.grouping = { granularity: flags.granularity }
+  if (flags.granularity || flags.hunks) {
+    overrides.grouping = {
+      ...(flags.granularity ? { granularity: flags.granularity } : {}),
+      ...(flags.hunks ? { hunks: true } : {}),
+    }
+  }
   if (flags.guard === false) overrides.guard = { secrets: false }
   if (flags.push) overrides.execute = { push: true }
   return overrides
@@ -82,6 +89,7 @@ function addProviderOptions(command: Command): Command {
 function addPlanningOptions(command: Command): Command {
   return addProviderOptions(command)
     .option('-g, --granularity <level>', 'fine | semantic | coarse')
+    .option('--hunks', 'split a file across commits when it mixes concerns')
     .option('--force', 'proceed on a detached HEAD')
     .option('--no-guard', 'skip the credential check')
 }
@@ -238,7 +246,7 @@ addPlanningOptions(
         const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
         warnUnknownKeys(loaded.unknownKeys)
         const { config } = loaded
-        const { git, state, plan } = await planWithProgress(cwd, config, flags)
+        const { git, state, plan, hunkContext } = await planWithProgress(cwd, config, flags)
 
         if (flags.dryRun || !process.stdin.isTTY) {
           console.log('')
@@ -279,6 +287,7 @@ addPlanningOptions(
 
         const result = await executePlan(git, approved, {
           verify: config.execute.verify,
+          ...(hunkContext ? { hunkContext } : {}),
           onCommit: (_id, sha, index, count) =>
             console.log(green(`  ✓ ${index}/${count}  ${sha.slice(0, 8)}`)),
         })

@@ -2,6 +2,8 @@ import { createGit, type Git } from '../core/git/exec.js'
 import { readWorkingTree } from '../core/git/read.js'
 import { preflight } from '../core/git/preflight.js'
 import { collectDiffs } from '../core/git/diff.js'
+import { buildHunkContext, type HunkContext } from '../core/git/hunk-stage.js'
+import { describeHunk } from '../core/git/hunks.js'
 import { inferStyle } from '../core/engine/style.js'
 import { createPlan, type PlanEvent } from '../core/engine/plan.js'
 import { resolveProvider } from '../core/providers/resolve.js'
@@ -16,6 +18,8 @@ export interface PipelineResult {
   style: RepoStyle
   provider: Provider
   plan: CommitPlan
+  /** Present only when hunk splitting was enabled and found something to split. */
+  hunkContext?: HunkContext
 }
 
 export class PipelineError extends Error {
@@ -87,9 +91,35 @@ export async function buildPlan(
     exclude: config.context.exclude,
   })
 
+  // Only text files that are modified in place can be split; a new, deleted, or
+  // collapsed entry has no meaningful "before" to diff hunks against.
+  let hunkContext: HunkContext | undefined
+  let splittable: Map<string, Array<{ id: string; description: string }>> | undefined
+
+  if (config.grouping.hunks) {
+    const candidates = state.files
+      .filter((file) => file.status === 'modified' && !file.binary && !file.collapsed)
+      .map((file) => file.path)
+
+    if (candidates.length > 0) {
+      hunkContext = await buildHunkContext(git, candidates, state.head)
+      if (hunkContext.hunksByPath.size > 0) {
+        splittable = new Map(
+          [...hunkContext.hunksByPath].map(([path, hunks]) => [
+            path,
+            hunks.map((hunk) => ({ id: hunk.id, description: describeHunk(hunk) })),
+          ]),
+        )
+      } else {
+        hunkContext = undefined
+      }
+    }
+  }
+
   const plan = await createPlan(state, config, style, {
     provider,
     groupingDiffs,
+    ...(splittable ? { splittable } : {}),
     getFullDiffs: async (paths) => {
       const wanted = new Set(paths)
       return collectDiffs(
@@ -105,5 +135,5 @@ export async function buildPlan(
     onEvent: options.onEvent,
   })
 
-  return { git, state, style, provider, plan }
+  return { git, state, style, provider, plan, ...(hunkContext ? { hunkContext } : {}) }
 }

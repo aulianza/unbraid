@@ -36,6 +36,14 @@ export interface Git {
   run(args: string[]): Promise<string>
   /** Run git, returning the exit code instead of throwing. */
   runRaw(args: string[]): Promise<GitResult>
+  /**
+   * Run git with content on stdin.
+   *
+   * Needed by `hash-object --stdin`, which is how unbraid writes a blob that
+   * differs from the working tree. Passing content as an argument is not an
+   * option: file contents routinely exceed the OS argument limit.
+   */
+  runWithInput(args: string[], input: string): Promise<string>
 }
 
 export function createGit(cwd: string): Git {
@@ -73,6 +81,35 @@ export function createGit(cwd: string): Git {
   return {
     cwd,
     runRaw,
+
+    async runWithInput(args, input) {
+      const { spawn } = await import('node:child_process')
+
+      return new Promise<string>((resolve, reject) => {
+        const child = spawn('git', args, { cwd })
+        let stdout = ''
+        let stderr = ''
+
+        child.stdout.on('data', (chunk) => (stdout += chunk))
+        child.stderr.on('data', (chunk) => (stderr += chunk))
+        child.on('error', (error) => reject(error))
+        child.on('close', (code) => {
+          if (code === 0) resolve(stdout)
+          else
+            reject(
+              new GitError(
+                `git ${args.join(' ')} failed (exit ${code}): ${stderr.trim()}`,
+                args,
+                code ?? 1,
+                stderr,
+              ),
+            )
+        })
+
+        child.stdin.end(input)
+      })
+    },
+
     async run(args) {
       const { stdout, stderr, code } = await runRaw(args)
       if (code !== 0) {

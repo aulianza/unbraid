@@ -72,6 +72,14 @@ export const configSchema = z.object({
       hints: z.array(groupingHintSchema).default([]),
       /** Untracked dirs larger than this stay a single entry. See git/read.ts. */
       expandUntrackedDirsUpTo: z.number().int().nonnegative().default(10),
+      /**
+       * Allow one file's changes to be split across commits.
+       *
+       * Off by default: it is the newest path, and a file that mixes concerns
+       * is less common than one that does not. A file is only ever split when
+       * applying all its hunks reproduces the working tree exactly.
+       */
+      hunks: z.boolean().default(false),
     })
     .default({}),
 

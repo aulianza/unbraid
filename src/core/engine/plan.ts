@@ -25,13 +25,23 @@ export interface PlanDeps {
   provider: Provider
   /** Truncated diffs used for the grouping pass. */
   groupingDiffs: FileDiff[]
+  /**
+   * Files that may be split, and the hunks available in each. Supplied only
+   * when hunk splitting is enabled and the file passed the round-trip check.
+   */
+  splittable?: Map<string, Array<{ id: string; description: string }>>
   /** Full diffs for a specific set of paths, fetched lazily for pass 2. */
   getFullDiffs: (paths: string[]) => Promise<FileDiff[]>
   onEvent?: (event: PlanEvent) => void
 }
 
 interface GroupingResponse {
-  groups: Array<{ title: string; files: string[]; warnings?: string[] }>
+  groups: Array<{
+    title: string
+    files: string[]
+    warnings?: string[]
+    hunks?: string[]
+  }>
 }
 interface SinglePassResponse {
   groups: Array<{
@@ -39,6 +49,7 @@ interface SinglePassResponse {
     body: string
     files: string[]
     warnings?: string[]
+    hunks?: string[]
   }>
 }
 interface MessageResponse {
@@ -65,13 +76,16 @@ export async function createPlan(
 ): Promise<CommitPlan> {
   const system = buildSystemPrompt(config, style)
   const allPaths = state.files.map((file) => file.path)
+  const availableHunks = [...(deps.splittable?.values() ?? [])]
+    .flat()
+    .map((hunk) => hunk.id)
 
   const { locked, hinted, candidates } = partition(state.files, config)
   const candidatePaths = candidates.map((file) => file.path)
 
   // Nothing for the model to do.
   if (candidates.length === 0) {
-    return reconcile({ groups: hinted, realFiles: allPaths, locked })
+    return reconcile({ groups: hinted, realFiles: allPaths, locked, availableHunks })
   }
 
   const candidateDiffs = deps.groupingDiffs.filter((diff) =>
@@ -82,14 +96,24 @@ export async function createPlan(
     if (candidates.length <= config.context.singlePassThreshold) {
       const groups = await singlePass(system, candidates, candidateDiffs, config, deps)
       return capCommits(
-        reconcile({ groups: [...hinted, ...groups], realFiles: allPaths, locked }),
+        reconcile({
+          groups: [...hinted, ...groups],
+          realFiles: allPaths,
+          locked,
+          availableHunks,
+        }),
         config,
       )
     }
 
     const groups = await twoPass(system, candidates, candidateDiffs, config, deps)
     return capCommits(
-      reconcile({ groups: [...hinted, ...groups], realFiles: allPaths, locked }),
+      reconcile({
+        groups: [...hinted, ...groups],
+        realFiles: allPaths,
+        locked,
+        availableHunks,
+      }),
       config,
     )
   } catch (error) {
@@ -126,7 +150,7 @@ async function singlePass(
 
   const response = await deps.provider.complete<SinglePassResponse>({
     system,
-    prompt: buildSinglePassPrompt(files, diffs, config),
+    prompt: buildSinglePassPrompt(files, diffs, config, deps.splittable),
     schema: SINGLE_PASS_SCHEMA,
     schemaName: 'commit_plan',
   })
@@ -137,6 +161,7 @@ async function singlePass(
     title: group.title,
     body: group.body?.trim() ? group.body : null,
     files: group.files ?? [],
+    hunks: group.hunks ?? [],
     warnings: group.warnings ?? [],
   }))
 }
@@ -153,7 +178,7 @@ async function twoPass(
 
   const grouping = await deps.provider.complete<GroupingResponse>({
     system,
-    prompt: buildGroupingPrompt(files, diffs, config),
+    prompt: buildGroupingPrompt(files, diffs, config, deps.splittable),
     schema: GROUPING_SCHEMA,
     schemaName: 'grouping',
   })
@@ -183,6 +208,7 @@ async function twoPass(
           title: message.title || group.title,
           body: message.body?.trim() ? message.body : null,
           files: group.files,
+          hunks: group.hunks ?? [],
           warnings: group.warnings ?? [],
         }
       } catch {
@@ -193,6 +219,7 @@ async function twoPass(
           title: group.title,
           body: null,
           files: group.files,
+          hunks: group.hunks ?? [],
           warnings: [...(group.warnings ?? []), 'Message generation failed; using the provisional subject.'],
         }
       }

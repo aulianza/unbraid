@@ -2,12 +2,19 @@ import type { Git } from './exec.js'
 import { stageInBatches } from './snapshot.js'
 import { restoreSnapshot, takeSnapshot, type Snapshot } from './snapshot.js'
 import type { CommitPlan } from '../engine/types.js'
+import {
+  hunkPathsFor,
+  stageHunksForCommit,
+  type HunkContext,
+} from './hunk-stage.js'
 
 export interface ExecuteOptions {
   /** Run the repository's git hooks. Default true — they are the user's rules. */
   verify?: boolean
   /** Called after each commit lands, for progress reporting. */
   onCommit?: (id: string, sha: string, index: number, total: number) => void
+  /** Supplied only when the plan splits files by hunk. */
+  hunkContext?: HunkContext
 }
 
 export interface ExecuteResult {
@@ -41,7 +48,19 @@ export async function executePlan(
       // Reset the index between commits so each one contains exactly its own
       // files, regardless of what the previous iteration staged.
       await git.runRaw(['reset', '--quiet', '--', '.'])
-      await stageInBatches(git, commit.files)
+
+      const hunkPaths = options.hunkContext
+        ? hunkPathsFor(commit, options.hunkContext)
+        : []
+
+      // Files split by hunk are staged as computed content; the rest are staged
+      // as they exist on disk.
+      const wholePaths = commit.files.filter((path) => !hunkPaths.includes(path))
+      await stageInBatches(git, wholePaths)
+
+      for (const path of hunkPaths) {
+        await stageHunksForCommit(git, plan, index, path, options.hunkContext!)
+      }
 
       const sha = await createCommit(git, commit.title, commit.body, verify)
       shas.push(sha)

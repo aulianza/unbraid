@@ -61,6 +61,11 @@ export interface PlannedCommit {
   title: string
   body: string | null
   files: string[]
+  /**
+   * Hunk ids (`path#0`, `path#1`, …) this commit takes from files it shares
+   * with other commits. Absent means the commit takes its files whole.
+   */
+  hunks?: string[]
   /** True when these files were already staged; the model never saw them. */
   locked: boolean
   /** Advisory notes, e.g. "also contains an unrelated rename". */
@@ -86,6 +91,8 @@ export interface RawGroup {
   title: string
   body?: string | null
   files: string[]
+  /** Hunk ids, when the model split a file across commits. */
+  hunks?: string[]
   warnings?: string[]
 }
 

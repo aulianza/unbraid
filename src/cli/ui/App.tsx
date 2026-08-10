@@ -101,12 +101,20 @@ export function Review({ plan, state: tree, onDone }: ReviewProps) {
             </Text>
 
             {editor.expanded.has(commit.id)
-              ? commit.files.map((file) => (
-                  <Text key={file} dimColor>
-                    {'      · '}
-                    {file}
-                  </Text>
-                ))
+              ? commit.files.map((file) => {
+                  const taken = (commit.hunks ?? []).filter(
+                    (id) => id.slice(0, id.lastIndexOf('#')) === file,
+                  ).length
+                  return (
+                    <Text key={file} dimColor>
+                      {'      · '}
+                      {file}
+                      {taken > 0 ? (
+                        <Text color="yellow">{` (${taken} of its changes)`}</Text>
+                      ) : null}
+                    </Text>
+                  )
+                })
               : null}
 
             {commit.warnings.map((warning) => (

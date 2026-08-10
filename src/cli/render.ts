@@ -59,7 +59,16 @@ export function renderPlan(plan: CommitPlan, state: WorkingTreeState): string {
 
     for (const path of commit.files.slice(0, 8)) {
       const change = state.files.find((file) => file.path === path)
-      const suffix = change?.collapsed ? dim(` (${change.fileCount} files)`) : ''
+      // A partially-taken file must say so, or the plan reads as if the whole
+      // file is going into this commit.
+      const taken = (commit.hunks ?? []).filter(
+        (id) => id.slice(0, id.lastIndexOf('#')) === path,
+      ).length
+      const suffix = change?.collapsed
+        ? dim(` (${change.fileCount} files)`)
+        : taken > 0
+          ? yellow(` (${taken} of its changes)`)
+          : ''
       lines.push(`     ${dim('·')} ${path}${suffix}`)
     }
     if (commit.files.length > 8) {

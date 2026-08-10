@@ -35,8 +35,14 @@ export const GROUPING_SCHEMA: JsonSchema = {
             description:
               'Notes about files that mix unrelated concerns. Empty if none.',
           },
+          hunks: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Hunk ids (path#N) when taking only part of a splittable file. Empty otherwise.',
+          },
         },
-        required: ['title', 'files', 'warnings'],
+        required: ['title', 'files', 'warnings', 'hunks'],
         additionalProperties: false,
       },
     },
@@ -70,8 +76,14 @@ export const SINGLE_PASS_SCHEMA: JsonSchema = {
           body: { type: 'string' },
           files: { type: 'array', items: { type: 'string' } },
           warnings: { type: 'array', items: { type: 'string' } },
+          hunks: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Hunk ids (path#N) when taking only part of a splittable file. Empty otherwise.',
+          },
         },
-        required: ['title', 'body', 'files', 'warnings'],
+        required: ['title', 'body', 'files', 'warnings', 'hunks'],
         additionalProperties: false,
       },
     },
@@ -178,10 +190,40 @@ export function buildSystemPrompt(config: Config, style: RepoStyle): string {
   return lines.join('\n')
 }
 
+/**
+ * Tell the model which files may be split, and how to name their pieces.
+ *
+ * Only offered for files that passed the round-trip check, so the model is
+ * never invited to split something unbraid cannot safely reassemble.
+ */
+export function renderSplittableFiles(
+  splittable: Map<string, Array<{ id: string; description: string }>>,
+): string {
+  if (splittable.size === 0) return ''
+
+  const lines = [
+    '',
+    '## Files that may be split across commits',
+    'These files contain several separate changes. If a file mixes unrelated',
+    'concerns, put each hunk in the commit it belongs to by listing its id in',
+    '`hunks`. Otherwise leave `hunks` empty and the whole file is committed together.',
+    'Every hunk of a split file must appear in exactly one commit.',
+    '',
+  ]
+
+  for (const [path, hunks] of splittable) {
+    lines.push(`${path}:`)
+    lines.push(...hunks.map((hunk) => `  ${hunk.id} — ${hunk.description}`))
+  }
+
+  return lines.join('\n')
+}
+
 export function buildGroupingPrompt(
   files: FileChange[],
   diffs: FileDiff[],
   config: Config,
+  splittable?: Map<string, Array<{ id: string; description: string }>>,
 ): string {
   return [
     GRANULARITY_GUIDANCE[config.grouping.granularity],
@@ -194,6 +236,7 @@ export function buildGroupingPrompt(
     '',
     '## Diffs',
     renderDiffs(diffs),
+    splittable ? renderSplittableFiles(splittable) : '',
   ].join('\n')
 }
 
@@ -201,6 +244,7 @@ export function buildSinglePassPrompt(
   files: FileChange[],
   diffs: FileDiff[],
   config: Config,
+  splittable?: Map<string, Array<{ id: string; description: string }>>,
 ): string {
   return [
     GRANULARITY_GUIDANCE[config.grouping.granularity],
@@ -213,6 +257,7 @@ export function buildSinglePassPrompt(
     '',
     '## Diffs',
     renderDiffs(diffs),
+    splittable ? renderSplittableFiles(splittable) : '',
   ].join('\n')
 }
 
