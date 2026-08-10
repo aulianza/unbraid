@@ -10,6 +10,9 @@ import { buildPlan, PipelineError } from './pipeline.js'
 import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
+import { resolveBaseBranch, summarizeBranch, BranchError } from '../core/git/branch.js'
+import { createPrDraft } from '../core/engine/pr.js'
+import { resolveProvider } from '../core/providers/resolve.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Config } from '../core/config/schema.js'
 
@@ -346,6 +349,105 @@ program
   })
 
 // ---------------------------------------------------------------------------
+
+addCommonOptions(
+  program
+    .command('pr')
+    .description("Draft a pull request title and body from this branch's commits.")
+    .option('-b, --base <branch>', 'branch to compare against (auto-detected)')
+    .option('-o, --out <file>', 'write the draft to a file')
+    .option('--open', 'create the pull request with the GitHub CLI')
+    .action(async (flags: CommonFlags & { base?: string; out?: string; open?: boolean }) => {
+      const spinner = createSpinner()
+      try {
+        const cwd = process.cwd()
+        const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
+        warnUnknownKeys(loaded.unknownKeys)
+
+        const git = createGit(cwd)
+        const base = await resolveBaseBranch(git, flags.base)
+        const summary = await summarizeBranch(git, base)
+
+        console.error(
+          dim(
+            `${summary.branch} → ${summary.base} · ${summary.commits.length} commits · ${summary.filesChanged} files`,
+          ),
+        )
+
+        const provider = await resolveProvider(loaded.config)
+        spinner.start(dim('Drafting pull request'))
+        const draft = await createPrDraft(summary, loaded.config, provider)
+        spinner.stop()
+
+        if (flags.out) {
+          await writeFile(flags.out, `${draft.title}\n\n${draft.body}\n`, 'utf8')
+          console.error(green(`Wrote ${flags.out}`))
+        }
+
+        console.log(bold(draft.title))
+        console.log('')
+        console.log(draft.body)
+
+        if (flags.open) {
+          console.error('')
+          const proceed = await confirm(`Open this pull request against ${base}?`)
+          if (!proceed) {
+            console.error(dim('Not opened.'))
+            return
+          }
+          await openPullRequest(cwd, base, draft.title, draft.body)
+        }
+      } catch (error) {
+        spinner.stop()
+        if (error instanceof BranchError) {
+          console.error(red(error.message))
+          if (error.hint) console.error(dim(error.hint))
+          process.exit(1)
+        }
+        fail(error)
+      }
+    }),
+)
+
+/**
+ * Hand the draft to the GitHub CLI.
+ *
+ * The body goes in over stdin rather than as an argument: PR bodies routinely
+ * exceed the operating system's argument length limit, and backticks in a
+ * description would otherwise need escaping.
+ */
+async function openPullRequest(
+  cwd: string,
+  base: string,
+  title: string,
+  body: string,
+): Promise<void> {
+  const { spawn } = await import('node:child_process')
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      'gh',
+      ['pr', 'create', '--base', base, '--title', title, '--body-file', '-'],
+      { cwd, stdio: ['pipe', 'inherit', 'inherit'] },
+    )
+
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      reject(
+        error.code === 'ENOENT'
+          ? new Error(
+              'The GitHub CLI (`gh`) is not installed. Install it, or use --out and paste the body yourself.',
+            )
+          : error,
+      )
+    })
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`gh pr create exited with ${code}`))
+    })
+
+    child.stdin?.end(body)
+  })
+}
 
 program
   .command('config')
