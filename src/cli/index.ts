@@ -9,6 +9,7 @@ import { readWorkingTree } from '../core/git/read.js'
 import { buildPlan, PipelineError } from './pipeline.js'
 import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
+import { createSpinner } from './spinner.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Config } from '../core/config/schema.js'
 
@@ -108,39 +109,74 @@ function fail(error: unknown): never {
 
 /** Shared: build a plan, showing progress and running the credential guard. */
 async function planWithProgress(cwd: string, config: Config, flags: CommonFlags) {
-  return buildPlan({
-    cwd,
-    config,
-    force: flags.force,
-    onTreeRead: (state, provider, style) => {
-      console.error(
-        dim(
-          `${state.files.length} changed · ${style.format} style · ${provider.name}/${provider.model}`,
-        ),
-      )
-    },
-    beforeModel: async (state, provider) => {
-      if (!config.guard.secrets) return true
-      const guard = checkSecrets(state.files, config.guard.secretPatterns, provider.isRemote)
-      if (!guard.blocked) return true
+  const spinner = createSpinner()
+  let expected = 0
+  let written = 0
+  let singlePass = false
 
-      console.error('')
-      console.error(yellow(describeSecretWarning(guard.matches, provider.name)))
-      console.error('')
-      return confirm('Send these to the provider anyway?')
-    },
-    onEvent: (event) => {
-      if (event.type === 'grouping-start') {
-        console.error(dim(`Grouping ${event.files} files…`))
-      }
-      if (event.type === 'grouping-done') {
-        console.error(dim(`Writing ${event.groups} commit messages…`))
-      }
-      if (event.type === 'degraded') {
-        console.error(yellow(`Grouping failed (${event.reason}); falling back to one commit.`))
-      }
-    },
-  })
+  try {
+    return await buildPlan({
+      cwd,
+      config,
+      force: flags.force,
+      onTreeRead: (state, provider, style) => {
+        console.error(
+          dim(
+            `${state.files.length} changed · ${style.format} style · ${provider.name}/${provider.model}`,
+          ),
+        )
+      },
+      // The spinner owns the last line of output; leaving it running would
+      // overwrite the prompt the user is being asked to answer.
+      onPromptOpen: () => spinner.stop(),
+      beforeModel: async (state, provider) => {
+        if (!config.guard.secrets) return true
+        const guard = checkSecrets(state.files, config.guard.secretPatterns, provider.isRemote)
+        if (!guard.blocked) return true
+
+        console.error('')
+        console.error(yellow(describeSecretWarning(guard.matches, provider.name)))
+        console.error('')
+        return confirm('Send these to the provider anyway?')
+      },
+      onEvent: (event) => {
+        switch (event.type) {
+          case 'grouping-start':
+            // A single pass writes the messages in the same call, so promising
+            // a separate "writing" stage afterwards would be a lie.
+            spinner.start(
+              dim(
+                event.singlePass
+                  ? `Reading ${event.files} files and writing messages`
+                  : `Grouping ${event.files} files`,
+              ),
+            )
+            singlePass = event.singlePass
+            break
+          case 'grouping-done':
+            expected = event.groups
+            if (!singlePass) {
+              spinner.update(dim(`Writing commit messages  ${written}/${expected}`))
+            }
+            break
+          case 'message-done':
+            written++
+            spinner.update(
+              dim(`Writing commit messages  ${written}/${expected}`),
+            )
+            break
+          case 'degraded':
+            spinner.stop()
+            console.error(
+              yellow(`Grouping failed (${event.reason}); falling back to one commit.`),
+            )
+            break
+        }
+      },
+    })
+  } finally {
+    spinner.stop()
+  }
 }
 
 // ---------------------------------------------------------------------------

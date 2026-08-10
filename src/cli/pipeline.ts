@@ -35,6 +35,8 @@ export interface PipelineOptions {
   onEvent?: (event: PlanEvent) => void
   /** Called after the tree is read but before any model call. */
   onTreeRead?: (state: WorkingTreeState, provider: Provider, style: RepoStyle) => void
+  /** Called around the credential prompt so progress UI can be suspended. */
+  onPromptOpen?: () => void
   /** Return false to abort before contacting the provider. */
   beforeModel?: (state: WorkingTreeState, provider: Provider) => Promise<boolean>
 }
@@ -72,6 +74,9 @@ export async function buildPlan(
 
   options.onTreeRead?.(state, provider, style)
 
+  if (options.beforeModel) {
+    options.onPromptOpen?.()
+  }
   if (options.beforeModel && !(await options.beforeModel(state, provider))) {
     throw new PipelineError('Cancelled.')
   }

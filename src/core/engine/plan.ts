@@ -15,7 +15,7 @@ import {
 } from './prompts.js'
 
 export type PlanEvent =
-  | { type: 'grouping-start'; files: number }
+  | { type: 'grouping-start'; files: number; singlePass: boolean }
   | { type: 'grouping-done'; groups: number }
   | { type: 'message-start'; group: string }
   | { type: 'message-done'; group: string }
@@ -122,7 +122,7 @@ async function singlePass(
   config: Config,
   deps: PlanDeps,
 ): Promise<RawGroup[]> {
-  deps.onEvent?.({ type: 'grouping-start', files: files.length })
+  deps.onEvent?.({ type: 'grouping-start', files: files.length, singlePass: true })
 
   const response = await deps.provider.complete<SinglePassResponse>({
     system,
@@ -149,7 +149,7 @@ async function twoPass(
   config: Config,
   deps: PlanDeps,
 ): Promise<RawGroup[]> {
-  deps.onEvent?.({ type: 'grouping-start', files: files.length })
+  deps.onEvent?.({ type: 'grouping-start', files: files.length, singlePass: false })
 
   const grouping = await deps.provider.complete<GroupingResponse>({
     system,
