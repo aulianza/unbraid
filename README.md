@@ -126,8 +126,8 @@ tests, not by asking the AI nicely.
 unbraid finds it automatically and uses the subscription you already pay for. No API key, no
 per-use charge, no setup.
 
-Otherwise there are options — see [Providers](#providers), including running a model
-**entirely on your own laptop** for free with Ollama.
+Otherwise, run `unbraid init` and it will walk you through the options — including running a
+model **entirely on your own laptop** for free with Ollama. See [Providers](#providers).
 
 ## Using the review screen
 
@@ -148,6 +148,7 @@ committed until you press `c`.**
 ## Everyday commands
 
 ```bash
+unbraid init             # set up a provider, step by step
 unbraid                  # the normal thing: plan, review, commit
 unbraid --dry-run        # show the plan, change nothing
 unbraid --push           # commit, then push once at the end
@@ -235,8 +236,119 @@ A "provider" is whichever AI writes your commit messages. unbraid works with sev
 | **Anthropic API** | `ANTHROPIC_API_KEY` in your environment | Pay per use |
 | **Anything OpenAI-compatible** | A URL, usually a key | Varies — or free locally |
 
-That last row covers OpenAI, OpenRouter, Groq, DeepSeek, and **Ollama**. Ollama runs a model
-on your own computer, so your code never leaves your laptop:
+### The easy way
+
+```bash
+unbraid init
+```
+
+This walks you through picking a provider, tells you where to get a key if you need one,
+writes the config file for you, and then **makes a real call to check it works** before you
+walk away.
+
+```console
+$ unbraid init
+
+unbraid setup
+
+✓ Claude Code found — you can use it free with your existing subscription
+
+Which AI should write your commit messages?
+  ❯ 1. Claude Code — free, no API key, already installed
+    2. Anthropic API
+    3. Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama)
+
+Choice [1]: 1
+
+How big should each commit be?
+  ❯ 1. One commit per feature or fix
+    2. One commit per file
+    3. Few, large commits
+
+Choice [1]: 1
+
+✓ Wrote /Users/you/project/.unbraidrc.yaml
+
+Testing the connection…
+✓ claude-cli/sonnet is working
+
+Ready. Try it out:
+
+  cd your-project
+  unbraid --dry-run
+```
+
+Add `--global` to configure every project at once instead of just this one.
+
+### Setting it up by hand
+
+<details>
+<summary><b>Anthropic API</b></summary>
+
+1. Get a key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+2. Add it to your shell profile (`~/.zshrc` on macOS, `~/.bashrc` on most Linux):
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+3. Open a new terminal, then create `.unbraidrc.yaml` in your project:
+
+```yaml
+provider: anthropic
+providers:
+  anthropic:
+    model: claude-sonnet-5
+```
+
+That's it — `unbraid` will use it. Check with `unbraid config`.
+
+</details>
+
+<details>
+<summary><b>OpenAI, OpenRouter, Z.AI, Groq, DeepSeek</b></summary>
+
+All of these speak the same protocol, so they share one setup. Pick your service's URL:
+
+```yaml
+# .unbraidrc.yaml
+provider: openai-compatible
+providers:
+  openai-compatible:
+    baseUrl: https://api.openai.com/v1     # see the table below
+    apiKeyEnv: OPENAI_API_KEY              # the env var holding your key
+    model: gpt-4o
+```
+
+| Service | `baseUrl` | Get a key |
+| --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1` | [platform.openai.com](https://platform.openai.com/api-keys) |
+| OpenRouter | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| Z.AI (pay-as-you-go) | `https://api.z.ai/api/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
+| Z.AI (Coding Plan) | `https://api.z.ai/api/coding/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
+| Groq | `https://api.groq.com/openai/v1` | [console.groq.com](https://console.groq.com/keys) |
+| DeepSeek | `https://api.deepseek.com/v1` | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
+
+Then export your key:
+
+```bash
+export OPENAI_API_KEY="..."      # or OPENROUTER_API_KEY, ZAI_API_KEY, GROQ_API_KEY…
+```
+
+> **Z.AI users:** the two URLs are *not* interchangeable. A Coding Plan key sent to the
+> pay-as-you-go endpoint returns a `404` that looks like an authentication error.
+
+</details>
+
+<details>
+<summary><b>Ollama — free, and nothing leaves your laptop</b></summary>
+
+Your code is never sent anywhere. Install [Ollama](https://ollama.com), then:
+
+```bash
+ollama pull qwen2.5-coder
+ollama serve
+```
 
 ```yaml
 # .unbraidrc.yaml
@@ -246,6 +358,14 @@ providers:
     baseUrl: http://localhost:11434/v1
     model: qwen2.5-coder
 ```
+
+No API key needed. unbraid recognises local addresses and skips the credential warning,
+since nothing is leaving the machine.
+
+Quality depends on the model you run — a small local model writes vaguer messages than a
+frontier one. `qwen2.5-coder` is a reasonable starting point.
+
+</details>
 
 **A note on speed.** The free Claude Code option is slower — roughly 10–60 seconds per run,
 because it starts a whole CLI each time. An API key is noticeably faster. Free-and-slower is
@@ -358,8 +478,7 @@ unbraid apply --plan plan.json
 Install it with `npm install -g unbraid`, or use `npx unbraid` with no install at all.
 
 **"No AI provider available"**
-Install [Claude Code](https://claude.com/claude-code) and sign in (free with a subscription),
-or set `ANTHROPIC_API_KEY`, or configure a local model. unbraid prints the options.
+Run `unbraid init` — it walks you through the options and checks the result works.
 
 **"Nothing to commit — the working tree is clean"**
 You have no uncommitted changes. Edit something first.

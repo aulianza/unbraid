@@ -31,6 +31,7 @@ program
     'after',
     `
 Examples:
+  $ unbraid init                set up a provider, step by step
   $ unbraid                     plan, review, and commit
   $ unbraid --dry-run           show the plan, change nothing
   $ unbraid -g fine             one commit per file
@@ -489,6 +490,20 @@ async function openPullRequest(
     child.stdin?.end(body)
   })
 }
+
+program
+  .command('init')
+  .description('Set up unbraid step by step, and test that it works.')
+  .option('--global', 'write to ~/.config/unbraid instead of this project')
+  .action(async (flags: { global?: boolean }) => {
+    try {
+      // Imported lazily so the wizard's prompts are not loaded on every run.
+      const { runInit } = await import('./init-run.js')
+      await runInit({ cwd: process.cwd(), global: flags.global })
+    } catch (error) {
+      fail(error)
+    }
+  })
 
 program
   .command('config')
