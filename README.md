@@ -162,7 +162,7 @@ grouping:
       group: "docs"
 
 message:
-  format: auto              # auto | conventional | gitmoji | plain
+  format: conventional      # conventional | gitmoji | plain | auto
   types: [feat, fix, refactor, chore, docs, test, style, perf, build, ci]
   scope: auto               # auto | off | required
   max_title_length: 72
@@ -190,11 +190,29 @@ Config resolves in layers, later winning:
 **defaults → `~/.config/unbraid/config.yaml` → `.unbraidrc.yaml` → env vars → CLI flags.**
 Run `unbraid config` to print the resolved values and where each one came from.
 
-### `message.format: auto`
+### Message format
 
-The default worth calling out. `unbraid` reads the last 20 commits in *your* repo and matches
-what it finds — Conventional Commits, gitmoji, bare sentences, whatever you're already doing.
-No configuration required to fit in.
+The default is **Conventional Commits** — `type(scope): subject` — because a parseable,
+consistent history is worth more than blending into an inconsistent one:
+
+```
+feat(auth): add refresh token rotation
+fix(api): handle null user in profile route
+refactor: migrate from pages router to app router
+chore(deps): bump next to 15.2
+```
+
+Scopes are *encouraged, not mandated*. `unbraid` uses one when a real area exists — a package,
+module, route, or feature — and omits it otherwise. Forcing a scope on every commit is how you
+end up with `fix(fix):`, which is worse than no scope at all. Set `scope: required` if you
+disagree, or `scope: off` to drop them entirely.
+
+`unbraid` also reads the last 20 commits in your repo to pick up the scopes and types you
+already use, so it reuses `ui` and `i18n` rather than inventing `frontend` and `translations`.
+
+Prefer to blend in instead — contributing to someone else's project, say? Set
+`format: auto` and it matches whatever the repository already does, gitmoji and plain prose
+included.
 
 ## Scripting
 

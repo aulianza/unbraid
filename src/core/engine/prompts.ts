@@ -109,18 +109,30 @@ export function buildSystemPrompt(config: Config, style: RepoStyle): string {
 
   if (format === 'conventional') {
     lines.push(
-      `- Conventional Commits: type(scope): subject`,
-      `- Types in use here: ${(style.commonTypes.length ? style.commonTypes : config.message.types).join(', ')}`,
+      '- Conventional Commits: `type(scope): subject`',
+      `- Allowed types: ${config.message.types.join(', ')}`,
+      '- Choose the type from what the change does, not from which files moved.',
     )
+
+    if (style.commonTypes.length > 0) {
+      lines.push(`- Types already common here: ${style.commonTypes.join(', ')}`)
+    }
+
+    const knownScopes = style.commonScopes.length
+      ? ` Scopes already used here: ${style.commonScopes.join(', ')} — reuse these where they fit.`
+      : ''
+
     if (config.message.scope === 'off') {
       lines.push('- Do not use scopes.')
-    } else if (style.usesScopes || config.message.scope === 'required') {
-      const known = style.commonScopes.length
-        ? ` Scopes already in use: ${style.commonScopes.join(', ')}.`
-        : ''
-      lines.push(`- Use a scope.${known}`)
+    } else if (config.message.scope === 'required') {
+      lines.push(`- Every subject must carry a scope.${knownScopes}`)
     } else {
-      lines.push('- This repository rarely uses scopes; omit them unless obvious.')
+      // Encourage, do not mandate. A forced scope with nothing meaningful to
+      // name produces filler like `fix(fix):`, which is worse than no scope.
+      lines.push(
+        `- Prefer a scope naming the area touched: a package, module, route, or feature (for example \`feat(auth):\`).${knownScopes}`,
+        '- Omit the scope rather than inventing a filler one. Never restate the type as the scope.',
+      )
     }
   } else if (format === 'gitmoji') {
     lines.push('- Begin the subject with an appropriate gitmoji, then the summary.')

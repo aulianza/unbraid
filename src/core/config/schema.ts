@@ -77,7 +77,15 @@ export const configSchema = z.object({
 
   message: z
     .object({
-      format: messageFormatSchema.default('auto'),
+      /**
+       * Conventional Commits by default.
+       *
+       * `auto` (match whatever the repository already does) is still available
+       * and is the better choice for contributing to someone else's project.
+       * The default is opinionated because a consistent, parseable history is
+       * worth more than blending into an inconsistent one.
+       */
+      format: messageFormatSchema.default('conventional'),
       types: z
         .array(z.string())
         .default([
@@ -92,6 +100,11 @@ export const configSchema = z.object({
           'build',
           'ci',
         ]),
+      /**
+       * `auto` means "use a scope where a real one exists, otherwise omit".
+       * `required` forces one on every commit, which reliably produces filler
+       * like `fix(fix):` when no meaningful scope exists.
+       */
       scope: z.enum(['auto', 'off', 'required']).default('auto'),
       maxTitleLength: z.number().int().positive().default(72),
       body: z.enum(['always', 'never', 'auto']).default('auto'),
