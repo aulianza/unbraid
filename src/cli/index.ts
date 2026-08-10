@@ -97,6 +97,17 @@ async function confirm(question: string): Promise<boolean> {
   }
 }
 
+/** A config key nobody reads is a setting the user thinks is working. */
+function warnUnknownKeys(keys: string[]): void {
+  if (keys.length === 0) return
+  console.error(
+    yellow(
+      `Ignoring ${keys.length} unrecognised config key(s): ${keys.join(', ')}`,
+    ),
+  )
+  console.error(dim('Config keys are camelCase, e.g. maxCommits, not max_commits.'))
+}
+
 function fail(error: unknown): never {
   if (error instanceof PipelineError) {
     console.error(red(error.message))
@@ -189,7 +200,9 @@ addCommonOptions(
     .action(async (flags: CommonFlags & { dryRun?: boolean; yes?: boolean; push?: boolean }) => {
       try {
         const cwd = process.cwd()
-        const { config } = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
+        const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
+        warnUnknownKeys(loaded.unknownKeys)
+        const { config } = loaded
         const { git, state, plan } = await planWithProgress(cwd, config, flags)
 
         if (flags.dryRun || !process.stdin.isTTY) {
@@ -339,7 +352,11 @@ program
   .description('Print the resolved configuration and where each value came from.')
   .action(async () => {
     try {
-      const { config, provenance, filesRead } = await loadConfig({ cwd: process.cwd() })
+      const { config, provenance, filesRead, unknownKeys } = await loadConfig({
+        cwd: process.cwd(),
+      })
+
+      warnUnknownKeys(unknownKeys)
 
       console.log(bold('Config files read:'))
       console.log(

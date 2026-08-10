@@ -125,6 +125,40 @@ describe('loadConfig', () => {
     await expect(loadConfig({ cwd, env: {}, home: cwd })).rejects.toThrow()
   })
 
+  // zod strips unknown keys silently, so a typo or wrong casing becomes a
+  // setting the user believes is working. These surface it instead.
+  it('reports unrecognised keys rather than dropping them silently', async () => {
+    const cwd = await scratch()
+    await writeFile(
+      join(cwd, '.unbraidrc.yaml'),
+      'grouping:\n  max_commits: 5\n  granularity: fine\n',
+    )
+
+    const { config, unknownKeys } = await loadConfig({ cwd, env: {}, home: cwd })
+
+    expect(unknownKeys).toEqual(['grouping.max_commits'])
+    // The recognised sibling still applies.
+    expect(config.grouping.granularity).toBe('fine')
+    expect(config.grouping.maxCommits).toBe(20)
+  })
+
+  it('reports an unrecognised top-level key', async () => {
+    const cwd = await scratch()
+    await writeFile(join(cwd, '.unbraidrc.yaml'), 'colour: blue\n')
+
+    const { unknownKeys } = await loadConfig({ cwd, env: {}, home: cwd })
+    expect(unknownKeys).toEqual(['colour'])
+  })
+
+  it('reports nothing for a valid config', async () => {
+    const cwd = await scratch()
+    await writeFile(join(cwd, '.unbraidrc.yaml'), 'grouping:\n  maxCommits: 5\n')
+
+    const { unknownKeys, config } = await loadConfig({ cwd, env: {}, home: cwd })
+    expect(unknownKeys).toEqual([])
+    expect(config.grouping.maxCommits).toBe(5)
+  })
+
   it('uses the first config filename it finds and ignores the rest', async () => {
     const cwd = await scratch()
     await writeFile(join(cwd, '.unbraidrc.yaml'), 'model: from-yaml\n')

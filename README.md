@@ -10,7 +10,7 @@ spend 30 minutes staging them by hand, or throw them all into `misc: updates`.
 `unbraid` reads the whole tree, works out which changes belong together, writes a real
 message for each one, and shows you the plan before it touches anything.
 
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#status)
+[![npm](https://img.shields.io/npm/v/unbraid)](https://www.npmjs.com/package/unbraid)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
@@ -59,12 +59,13 @@ for a smaller job. If the staging is what's costing you, that's this.
 
 ## Status
 
-**Pre-alpha. Not yet published to npm.** The design is settled — see
-[ARCHITECTURE.md](docs/ARCHITECTURE.md) — and implementation is in progress. Star the repo
-if you want to hear when it's usable, or read [CONTRIBUTING.md](CONTRIBUTING.md) if you'd
-like to help build it.
+**v0.1 — early, but real.** Splitting, message generation, the review screen, atomic commits
+with rollback, and all three providers work and are covered by tests. Anything still unbuilt
+is marked 🚧 below.
 
-This README describes v1 as designed. Anything not yet working is marked 🚧.
+Expect rough edges at this stage. Issues and PRs welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md), and [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it
+fits together.
 
 ## Install
 
@@ -125,7 +126,7 @@ catch-all group. Every changed path is accounted for, every run.
 | --- | --- | --- |
 | **Claude Code CLI** *(default)* | Nothing — detected automatically | Covered by your existing subscription |
 | **Anthropic API** | `ANTHROPIC_API_KEY` | Per token |
-| **OpenAI-compatible** | `base_url` + key | Per token, or free locally |
+| **OpenAI-compatible** | `baseUrl` + key | Per token, or free locally |
 
 That last row is the useful one: a single adapter covers OpenAI, OpenRouter, Groq, DeepSeek,
 and **Ollama**, so you can run this fully offline against a local model if you'd rather no
@@ -136,7 +137,7 @@ diff ever leaves your machine.
 provider: openai-compatible
 providers:
   openai-compatible:
-    base_url: http://localhost:11434/v1   # ollama — nothing leaves your laptop
+    baseUrl: http://localhost:11434/v1   # ollama — nothing leaves your laptop
     model: qwen2.5-coder
 ```
 
@@ -153,8 +154,8 @@ model: auto
 
 grouping:
   granularity: semantic     # fine | semantic | coarse
-  max_commits: 20
-  respect_staged: true      # already staged something? that stays exactly as you left it
+  maxCommits: 20
+  respectStaged: true      # already staged something? that stays exactly as you left it
   hints:                    # your rules, applied before the AI sees anything
     - match: "(package-lock.json|pnpm-lock.yaml|bun.lock)"
       group: "chore(deps): update lockfile"
@@ -165,25 +166,25 @@ message:
   format: conventional      # conventional | gitmoji | plain | auto
   types: [feat, fix, refactor, chore, docs, test, style, perf, build, ci]
   scope: auto               # auto | off | required
-  max_title_length: 72
+  maxTitleLength: 72
   body: auto                # always | never | auto
-  body_style: bullets       # bullets | prose
+  bodyStyle: bullets       # bullets | prose
   language: en              # write commit messages in any language
-  ticket_pattern: null      # "([A-Z]+-\\d+)" — lifts the JIRA key from your branch name
-  sign_off: false
+  ticketPattern: null      # "([A-Z]+-\\d+)" — lifts the JIRA key from your branch name
+  signOff: false
 
 context:
-  single_pass_threshold: 15
-  truncate_lines: 20
-  max_diff_bytes: 100000
-  log_sample: 20            # how many past commits to read for style
+  singlePassThreshold: 15
+  truncateLines: 20
+  maxDiffBytes: 100000
+  logSample: 20            # how many past commits to read for style
   exclude: ["*.lock", "*.min.js", "*.snap", "dist/**", "*.{png,jpg,svg,woff2}"]
 
 execute:
   push: false
-  push_remote: origin
+  pushRemote: origin
   autoconfirm: false        # skip the review screen — for CI and scripts
-  on_error: rollback        # rollback | keep
+  onError: rollback        # rollback | keep
 ```
 
 Config resolves in layers, later winning:
@@ -219,16 +220,17 @@ included.
 Every part of `unbraid` is available headlessly, so you can wire it into anything:
 
 ```bash
-unbraid plan --json > plan.json     # analyze only, no side effects  🚧
+unbraid plan --json > plan.json     # analyze only, no side effects
 $EDITOR plan.json
-unbraid apply --plan plan.json      # execute a plan you've edited   🚧
+unbraid apply --plan plan.json      # execute a plan you've edited
 ```
 
 This is also the seam the desktop app is built on — see below.
 
 ## Roadmap
 
-- [ ] **v1 — the CLI.** File-level grouping, AI messages, review TUI, push, `unbraid pr`.
+- [x] **v1 — the CLI.** File-level grouping, AI messages, review TUI, atomic commits, push.
+- [ ] **`unbraid pr`.** Draft a PR title and body from the branch's commits.
 - [ ] **v2 — macOS app.** A native SwiftUI shell over the same engine, driving it through
       `plan --json`. The point is visual diff review: seeing the actual hunks while you drag
       files between commits. Not a rewrite — the grouping logic stays in one place.

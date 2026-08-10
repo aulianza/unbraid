@@ -13,6 +13,14 @@ export interface LoadedConfig {
   provenance: Record<string, Source>
   /** Config files that were found and read, in precedence order. */
   filesRead: string[]
+  /**
+   * Keys present in a config file that the schema does not recognise.
+   *
+   * zod strips unknown keys silently, which turns a typo — or snake_case where
+   * the schema wants camelCase — into a setting that appears to work and does
+   * nothing. Surfacing them lets the CLI say so.
+   */
+  unknownKeys: string[]
 }
 
 export interface LoadOptions {
@@ -87,7 +95,45 @@ export async function loadConfig(options: LoadOptions): Promise<LoadedConfig> {
     )
   }
 
-  return { config: configSchema.parse(merged), provenance, filesRead }
+  const config = configSchema.parse(merged)
+
+  return {
+    config,
+    provenance,
+    filesRead,
+    unknownKeys: findUnknownKeys(merged, config as unknown as Record<string, unknown>),
+  }
+}
+
+/**
+ * Compare what was supplied against what the schema kept.
+ *
+ * Anything the parse dropped was a key nobody will ever read, and the user
+ * almost certainly meant it to do something.
+ */
+function findUnknownKeys(
+  supplied: Record<string, unknown>,
+  parsed: Record<string, unknown>,
+  prefix = '',
+): string[] {
+  const unknown: string[] = []
+
+  for (const [key, value] of Object.entries(supplied)) {
+    const path = prefix ? `${prefix}.${key}` : key
+
+    if (!(key in parsed)) {
+      unknown.push(path)
+      continue
+    }
+
+    if (isPlainObject(value) && isPlainObject(parsed[key])) {
+      unknown.push(
+        ...findUnknownKeys(value, parsed[key] as Record<string, unknown>, path),
+      )
+    }
+  }
+
+  return unknown
 }
 
 async function readConfigFile(
