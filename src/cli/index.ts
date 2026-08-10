@@ -25,6 +25,26 @@ program
   .name('unbraid')
   .description('Unbraid a tangled working tree into atomic commits, with AI-written messages.')
   .version(__UNBRAID_VERSION__)
+  // Flag lists say what exists; examples say what to type. Most people reading
+  // `-h` want the second.
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ unbraid                     plan, review, and commit
+  $ unbraid --dry-run           show the plan, change nothing
+  $ unbraid -g fine             one commit per file
+  $ unbraid --push              commit, then push once at the end
+  $ unbraid pr                  draft a pull request from this branch
+  $ unbraid config              show settings and where each came from
+
+Providers:
+  With Claude Code installed, unbraid uses your existing subscription — no
+  API key and no per-token cost. Otherwise set ANTHROPIC_API_KEY, or point
+  providers.openai-compatible.baseUrl at OpenAI, OpenRouter, or Ollama.
+
+Docs: https://github.com/aulianza/unbraid`,
+  )
 
 interface CommonFlags {
   granularity?: string
@@ -45,11 +65,23 @@ function flagsToConfig(flags: CommonFlags & { push?: boolean }): Record<string, 
   return overrides
 }
 
-function addCommonOptions(command: Command): Command {
+/** Options every command that talks to a model needs. */
+function addProviderOptions(command: Command): Command {
   return command
-    .option('-g, --granularity <level>', 'fine | semantic | coarse')
     .option('-p, --provider <name>', 'auto | claude-cli | anthropic | openai-compatible')
     .option('-m, --model <model>', 'model id or alias')
+}
+
+/**
+ * Options that only mean something when planning commits.
+ *
+ * Kept separate from provider options so `unbraid pr` does not advertise
+ * `--granularity` or `--no-guard`. Neither does anything there, and a flag that
+ * silently does nothing is worse than an absent one.
+ */
+function addPlanningOptions(command: Command): Command {
+  return addProviderOptions(command)
+    .option('-g, --granularity <level>', 'fine | semantic | coarse')
     .option('--force', 'proceed on a detached HEAD')
     .option('--no-guard', 'skip the credential check')
 }
@@ -195,7 +227,7 @@ async function planWithProgress(cwd: string, config: Config, flags: CommonFlags)
 
 // ---------------------------------------------------------------------------
 
-addCommonOptions(
+addPlanningOptions(
   program
     .option('-n, --dry-run', 'show the plan and exit without committing')
     .option('--push', 'push once after all commits land')
@@ -272,7 +304,7 @@ addCommonOptions(
 
 // ---------------------------------------------------------------------------
 
-addCommonOptions(
+addPlanningOptions(
   program
     .command('plan')
     .description('Emit a CommitPlan as JSON. Makes no changes.')
@@ -350,7 +382,7 @@ program
 
 // ---------------------------------------------------------------------------
 
-addCommonOptions(
+addProviderOptions(
   program
     .command('pr')
     .description("Draft a pull request title and body from this branch's commits.")
