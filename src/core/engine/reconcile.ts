@@ -127,11 +127,24 @@ export function reconcile(input: ReconcileInput): CommitPlan {
     })
   }
 
-  // Any hunk nobody claimed is folded into the last commit touching its file,
-  // so a forgotten hunk never silently disappears from the final content.
+  // Leftover hunks, but only for files that were actually split.
+  //
+  // A file with none of its hunks claimed is not a mistake: it means the model
+  // saw no reason to split it, so it is committed whole. Treating that as
+  // "forgotten" produced a warning per hunk on a completely ordinary plan.
+  // A file with *some* hunks claimed and others left behind is the real
+  // problem, because the leftovers would never reach any commit.
+  const partiallyClaimed = new Set(
+    availableHunks
+      .filter((id) => claimedHunks.has(id))
+      .map(pathOfHunk),
+  )
+
   for (const id of availableHunks) {
     if (claimedHunks.has(id)) continue
     const path = pathOfHunk(id)
+    if (!partiallyClaimed.has(path)) continue // whole file, nothing to reconcile
+
     const target = [...commits].reverse().find(
       (commit) => !commit.locked && commit.files.includes(path),
     )

@@ -22,6 +22,13 @@ export interface InitOptions {
   cwd: string
 }
 
+/** The user pressed Ctrl-D, or input ended. Not an error worth a stack trace. */
+class SetupCancelled extends Error {
+  constructor() {
+    super('cancelled')
+  }
+}
+
 /**
  * Interactive setup.
  *
@@ -51,9 +58,22 @@ export async function runInit(options: InitOptions): Promise<void> {
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
 
+  /**
+   * Ask a question, treating a closed input as a cancellation.
+   *
+   * readline rejects with "readline was closed" when stdin ends mid-prompt —
+   * which is what Ctrl-D does. Surfacing that raw tells the user their setup
+   * crashed when in fact they cancelled it.
+   */
   const ask = async (question: string, fallback = ''): Promise<string> => {
-    const answer = (await rl.question(question)).trim()
-    return answer === '' ? fallback : answer
+    let answer: string
+    try {
+      answer = await rl.question(question)
+    } catch {
+      throw new SetupCancelled()
+    }
+    const trimmed = answer.trim()
+    return trimmed === '' ? fallback : trimmed
   }
 
   const choose = async (
@@ -214,6 +234,12 @@ export async function runInit(options: InitOptions): Promise<void> {
         console.log(dim(`Most likely: ${requiredEnv} is not set in this terminal yet.`))
       }
     }
+  } catch (error) {
+    if (error instanceof SetupCancelled) {
+      console.log(dim('\n\nSetup cancelled. Nothing was written.'))
+      return
+    }
+    throw error
   } finally {
     rl.close()
   }

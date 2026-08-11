@@ -157,6 +157,38 @@ describe('reconcile', () => {
       expect(plan.commits[1]!.hunks).toEqual(['a.ts#1'])
     })
 
+    // Found by running against a real repository. The model decided none of
+    // the files needed splitting — correct — and every hunk was then reported
+    // as "unassigned", producing a warning per hunk on an ordinary plan.
+    it('says nothing when a file is simply taken whole', () => {
+      const plan = reconcile({
+        groups: [{ title: 'feat: one coherent change', files: ['a.ts', 'b.ts'], hunks: [] }],
+        realFiles: ['a.ts', 'b.ts'],
+        availableHunks: ['a.ts#0', 'a.ts#1', 'b.ts#0'],
+      })
+
+      expect(plan.commits[0]!.warnings).toEqual([])
+      expect(plan.commits[0]!.hunks).toBeUndefined()
+      expect(plan.commits[0]!.files).toEqual(['a.ts', 'b.ts'])
+      expect(plan.unassigned).toEqual([])
+    })
+
+    it('warns only about the file that was actually split', () => {
+      const plan = reconcile({
+        groups: [
+          // a.ts is split and one of its hunks is forgotten; b.ts is taken whole.
+          { title: 'fix', files: ['a.ts', 'b.ts'], hunks: ['a.ts#0'] },
+        ],
+        realFiles: ['a.ts', 'b.ts'],
+        availableHunks: ['a.ts#0', 'a.ts#1', 'b.ts#0'],
+      })
+
+      const warnings = plan.commits[0]!.warnings.join(' ')
+      expect(warnings).toContain('a.ts#1')
+      expect(warnings).not.toContain('b.ts#0')
+      expect(plan.commits[0]!.hunks).toEqual(['a.ts#0', 'a.ts#1'])
+    })
+
     // Losing a hunk would mean the final commit does not reproduce the
     // working tree — the same class of bug as losing a file.
     it('never leaves a hunk unassigned', () => {
