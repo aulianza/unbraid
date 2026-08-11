@@ -219,12 +219,56 @@ Once your commits exist, unbraid can describe the whole branch:
 
 ```bash
 unbraid pr               # print a title and description
+unbraid pr --web         # open a prefilled PR page in your browser
+unbraid pr -e --web      # revise the text first, then open it
+unbraid pr -t dev        # merge into dev instead of the default branch
 unbraid pr -o pr.md      # save it to a file
-unbraid pr --open        # create the PR (needs the GitHub CLI)
+unbraid pr --open        # create it with the GitHub CLI
 ```
 
 It reads your **commits**, not the raw code, so the description reflects what you meant
 rather than restating the diff.
+
+**`--web` needs nothing installed.** It opens the same "New pull request" page you'd reach by
+clicking through GitHub, with the title and description already filled in. No CLI, no token,
+no login beyond the browser session you already have. You review it on GitHub and press
+**Create pull request**.
+
+If your branch hasn't been pushed, unbraid notices and offers to push it first:
+
+```console
+$ unbraid pr --web
+
+feat/exchange-rate → master · 3 commits · 5 files
+
+feat/exchange-rate has not been pushed yet. GitHub cannot open a pull
+request for a branch it cannot see.
+
+Push to origin/feat/exchange-rate? [y/N] y
+  ✓ pushed
+
+Opening aulianza/tripana in your browser…
+```
+
+It also catches the quieter version of that problem — a branch that *is* pushed but has newer
+local commits, which would otherwise produce a pull request silently missing your latest work.
+
+**Choosing the target branch.** By default unbraid works out what you'd merge into: the
+remote's default branch, falling back to `main`, `master`, `develop`, or `trunk`. Override it
+per run with `-t`, or permanently:
+
+```yaml
+# .unbraidrc.yaml
+pr:
+  target: dev
+```
+
+**`--edit`** opens the draft in `$EDITOR` before anything is sent anywhere. First line is the
+title, the rest is the description — the same convention as a git commit message. Empty the
+file to cancel.
+
+> `--web` supports GitHub. On GitLab or Bitbucket, unbraid says so instead of opening a page
+> that won't work — use `-o pr.md` and paste it.
 
 ## Providers
 

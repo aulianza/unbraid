@@ -12,6 +12,7 @@ import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } fr
 import { createSpinner } from './spinner.js'
 import { resolveBaseBranch, summarizeBranch, BranchError } from '../core/git/branch.js'
 import { createPrDraft } from '../core/engine/pr.js'
+import { ensurePushed, openWebPr, editDraft, assertWebSupported } from './pr-flow.js'
 import { resolveProvider } from '../core/providers/resolve.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Config } from '../core/config/schema.js'
@@ -20,6 +21,11 @@ import type { Config } from '../core/config/schema.js'
 declare const __UNBRAID_VERSION__: string
 
 const program = new Command()
+
+// Options after a subcommand belong to that subcommand. Without this, the
+// program's own `-y, --yes` swallows `unbraid pr --yes`, which then silently
+// does nothing — the flag parses, just onto the wrong command.
+program.enablePositionalOptions()
 
 program
   .name('unbraid')
@@ -38,6 +44,8 @@ Examples:
   $ unbraid --hunks             split files that mix two concerns
   $ unbraid --push              commit, then push once at the end
   $ unbraid pr                  draft a pull request from this branch
+  $ unbraid pr --web            open a prefilled PR page in your browser
+  $ unbraid pr -t dev           target a different branch
   $ unbraid config              show settings and where each came from
 
 Providers:
@@ -396,59 +404,120 @@ addProviderOptions(
   program
     .command('pr')
     .description("Draft a pull request title and body from this branch's commits.")
-    .option('-b, --base <branch>', 'branch to compare against (auto-detected)')
+    .option('-t, --target <branch>', 'branch to merge into (auto-detected)')
+    .option('-b, --base <branch>', 'alias for --target')
     .option('-o, --out <file>', 'write the draft to a file')
+    .option('--web', 'open a prefilled pull request page in your browser')
     .option('--open', 'create the pull request with the GitHub CLI')
-    .action(async (flags: CommonFlags & { base?: string; out?: string; open?: boolean }) => {
-      const spinner = createSpinner()
-      try {
-        const cwd = process.cwd()
-        const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
-        warnUnknownKeys(loaded.unknownKeys)
+    .option('-e, --edit', 'revise the draft in $EDITOR first')
+    .option('-y, --yes', 'skip the push confirmation')
+    .action(
+      async (
+        flags: CommonFlags & {
+          target?: string
+          base?: string
+          out?: string
+          web?: boolean
+          open?: boolean
+          edit?: boolean
+          yes?: boolean
+        },
+      ) => {
+        const spinner = createSpinner()
+        try {
+          const cwd = process.cwd()
+          const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
+          warnUnknownKeys(loaded.unknownKeys)
 
-        const git = createGit(cwd)
-        const base = await resolveBaseBranch(git, flags.base)
-        const summary = await summarizeBranch(git, base)
+          const git = createGit(cwd)
+          // -t is the documented flag; --base is kept working for anyone who
+          // scripted against it before -t existed.
+          const requested = flags.target ?? flags.base ?? loaded.config.pr.target ?? undefined
+          const target = await resolveBaseBranch(git, requested)
+          const summary = await summarizeBranch(git, target)
 
-        console.error(
-          dim(
-            `${summary.branch} → ${summary.base} · ${summary.commits.length} commits · ${summary.filesChanged} files`,
-          ),
-        )
+          console.error(
+            dim(
+              `${summary.branch} → ${summary.base} · ${summary.commits.length} commits · ${summary.filesChanged} files`,
+            ),
+          )
 
-        const provider = await resolveProvider(loaded.config)
-        spinner.start(dim('Drafting pull request'))
-        const draft = await createPrDraft(summary, loaded.config, provider)
-        spinner.stop()
+          const provider = await resolveProvider(loaded.config)
+          spinner.start(dim('Drafting pull request'))
+          let draft = await createPrDraft(summary, loaded.config, provider)
+          spinner.stop()
 
-        if (flags.out) {
-          await writeFile(flags.out, `${draft.title}\n\n${draft.body}\n`, 'utf8')
-          console.error(green(`Wrote ${flags.out}`))
-        }
+          if (flags.edit) {
+            const edited = await editDraft(draft)
+            if (!edited) {
+              console.error(dim('Empty title — cancelled.'))
+              return
+            }
+            draft = edited
+          }
 
-        console.log(bold(draft.title))
-        console.log('')
-        console.log(draft.body)
+          if (flags.out) {
+            await writeFile(flags.out, `${draft.title}\n\n${draft.body}\n`, 'utf8')
+            console.error(green(`Wrote ${flags.out}`))
+          }
 
-        if (flags.open) {
+          // Printing is the default; --web and --open are additive.
+          if (!flags.web && !flags.open) {
+            console.log(bold(draft.title))
+            console.log('')
+            console.log(draft.body)
+            return
+          }
+
+          if (flags.web) await assertWebSupported(git)
+
+          const pushed = await ensurePushed({
+            git,
+            branch: summary.branch,
+            remote: loaded.config.execute.pushRemote,
+            confirm: async (reason, pushTarget) => {
+              if (flags.yes) return true
+              console.error(`\n${yellow(reason)}`)
+              return confirm(`Push to ${pushTarget}?`)
+            },
+            onPushed: () => console.error(green('  ✓ pushed')),
+          })
+          if (!pushed) {
+            console.error(dim('Not pushed, so no pull request was opened.'))
+            return
+          }
+
+          if (flags.web) {
+            await openWebPr({
+              git,
+              target: summary.base,
+              head: summary.branch,
+              draft,
+              onMessage: (message) => console.error(dim(message)),
+            })
+            return
+          }
+
+          console.log(bold(draft.title))
+          console.log('')
+          console.log(draft.body)
           console.error('')
-          const proceed = await confirm(`Open this pull request against ${base}?`)
-          if (!proceed) {
+          if (!flags.yes && !(await confirm(`Open this pull request against ${summary.base}?`))) {
             console.error(dim('Not opened.'))
             return
           }
-          await openPullRequest(cwd, base, draft.title, draft.body)
+          await openPullRequest(cwd, summary.base, draft.title, draft.body)
+        } catch (error) {
+          spinner.stop()
+          if (error instanceof BranchError) {
+            console.error(red(error.message))
+            if (error.hint) console.error(dim(error.hint))
+            process.exit(1)
+          }
+          fail(error)
         }
-      } catch (error) {
-        spinner.stop()
-        if (error instanceof BranchError) {
-          console.error(red(error.message))
-          if (error.hint) console.error(dim(error.hint))
-          process.exit(1)
-        }
-        fail(error)
-      }
-    }),
+      },
+    ),
 )
 
 /**

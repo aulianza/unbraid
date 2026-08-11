@@ -44,7 +44,13 @@ export async function resolveBaseBranch(
 ): Promise<string> {
   if (explicit) {
     if (!(await refExists(git, explicit))) {
-      throw new BranchError(`Base branch "${explicit}" does not exist.`)
+      // Listing what does exist turns "wrong branch name" from a dead end into
+      // a one-character fix.
+      const available = await listBranches(git)
+      throw new BranchError(
+        `Branch "${explicit}" does not exist.`,
+        available.length > 0 ? `Available: ${available.join(', ')}` : undefined,
+      )
     }
     return explicit
   }
@@ -151,6 +157,70 @@ async function readCommits(git: Git, from: string): Promise<BranchCommit[]> {
       const [sha = '', subject = '', body = ''] = record.split('\x1f')
       return { sha: sha.trim(), subject: subject.trim(), body: body.trim() }
     })
+}
+
+export interface UpstreamStatus {
+  /** The tracking branch, e.g. `origin/feat/x`, or null if there is none. */
+  upstream: string | null
+  /** Local commits the remote does not have. */
+  ahead: number
+  /** Remote commits the local branch does not have. */
+  behind: number
+}
+
+/**
+ * How this branch stands relative to its remote.
+ *
+ * Two cases block opening a pull request, and the second is the dangerous one:
+ * with no upstream the host cannot see the branch at all and fails loudly, but
+ * an upstream that is merely behind produces a pull request missing the user's
+ * latest commits — which looks like success.
+ */
+export async function upstreamStatus(git: Git): Promise<UpstreamStatus> {
+  const upstreamResult = await git.runRaw([
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{u}',
+  ])
+  if (upstreamResult.code !== 0) return { upstream: null, ahead: 0, behind: 0 }
+
+  const upstream = upstreamResult.stdout.trim()
+  const counts = await git.runRaw([
+    'rev-list',
+    '--left-right',
+    '--count',
+    `${upstream}...HEAD`,
+  ])
+  if (counts.code !== 0) return { upstream, ahead: 0, behind: 0 }
+
+  // `--left-right --count` prints "<behind>\t<ahead>" for upstream...HEAD.
+  const [behind = '0', ahead = '0'] = counts.stdout.trim().split(/\s+/)
+  return { upstream, ahead: Number(ahead) || 0, behind: Number(behind) || 0 }
+}
+
+/** Push the current branch, setting upstream when it has none. */
+export async function pushBranch(
+  git: Git,
+  remote: string,
+  branch: string,
+  setUpstream: boolean,
+): Promise<void> {
+  const args = ['push']
+  if (setUpstream) args.push('--set-upstream')
+  args.push(remote, branch)
+  await git.run(args)
+}
+
+/** Branch names that exist, for suggesting alternatives to a bad `--target`. */
+export async function listBranches(git: Git): Promise<string[]> {
+  const result = await git.runRaw([
+    'for-each-ref',
+    '--format=%(refname:short)',
+    'refs/heads',
+  ])
+  if (result.code !== 0) return []
+  return result.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
 }
 
 /** Lift a ticket key such as `PROJ-123` out of a branch name. */

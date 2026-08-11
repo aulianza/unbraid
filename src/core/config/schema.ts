@@ -157,6 +157,16 @@ export const configSchema = z.object({
     })
     .default({}),
 
+  pr: z
+    .object({
+      /**
+       * Branch pull requests merge into. Null means detect it: origin/HEAD
+       * first, then main, master, develop, trunk.
+       */
+      target: z.string().nullable().default(null),
+    })
+    .default({}),
+
   guard: z
     .object({
       /**
