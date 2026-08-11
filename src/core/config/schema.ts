@@ -157,6 +157,15 @@ export const configSchema = z.object({
     })
     .default({}),
 
+  /**
+   * Check npm once a day for a newer version and mention it after the command.
+   *
+   * Never blocks, never runs in CI or through npx, and never runs when the
+   * provider is local — someone who chose Ollama to keep everything on their
+   * machine should not get an outbound request they did not ask for.
+   */
+  updateCheck: z.boolean().default(true),
+
   pr: z
     .object({
       /**

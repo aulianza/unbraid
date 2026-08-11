@@ -10,6 +10,7 @@ import { buildPlan, PipelineError } from './pipeline.js'
 import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
+import { checkForUpdate } from './update-check.js'
 import { resolveBaseBranch, summarizeBranch, BranchError } from '../core/git/branch.js'
 import { createPrDraft } from '../core/engine/pr.js'
 import { ensurePushed, openWebPr, editDraft, assertWebSupported } from './pr-flow.js'
@@ -171,6 +172,32 @@ function warnUnknownKeys(keys: string[]): void {
   console.error(dim('Config keys are camelCase, e.g. maxCommits, not max_commits.'))
 }
 
+/**
+ * Print an update notice, if there is one to print.
+ *
+ * Called after the command's own output so it never delays or obscures it, and
+ * skipped whenever a notice would be noise or unwelcome: no terminal, an
+ * explicit opt-out, or a provider that runs on this machine.
+ */
+function isOnMachine(provider: { name: string; isRemote: boolean }): boolean {
+  return provider.name === 'openai-compatible' && !provider.isRemote
+}
+
+async function noticeUpdate(config: Config, localProvider: boolean): Promise<void> {
+  const disabled =
+    !process.stderr.isTTY ||
+    !config.updateCheck ||
+    process.env.UNBRAID_NO_UPDATE_CHECK !== undefined ||
+    process.env.CI !== undefined ||
+    localProvider
+
+  const message = await checkForUpdate({
+    currentVersion: __UNBRAID_VERSION__,
+    disabled,
+  })
+  if (message) console.error(`\n${dim(message)}`)
+}
+
 function fail(error: unknown): never {
   if (error instanceof PipelineError) {
     console.error(red(error.message))
@@ -266,7 +293,11 @@ addPlanningOptions(
         const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
         warnUnknownKeys(loaded.unknownKeys)
         const { config } = loaded
-        const { git, state, plan, hunkContext } = await planWithProgress(cwd, config, flags)
+        const { git, state, plan, hunkContext, provider } = await planWithProgress(
+          cwd,
+          config,
+          flags,
+        )
 
         if (flags.dryRun || !process.stdin.isTTY) {
           console.log('')
@@ -275,6 +306,7 @@ addPlanningOptions(
 
         if (flags.dryRun) {
           console.log(dim('Dry run — nothing was committed.'))
+          await noticeUpdate(config, isOnMachine(provider))
           return
         }
 
@@ -325,6 +357,8 @@ addPlanningOptions(
           await push(git, { remote: config.execute.pushRemote })
           console.log(green('Pushed.'))
         }
+
+        await noticeUpdate(config, isOnMachine(provider))
       } catch (error) {
         fail(error)
       }

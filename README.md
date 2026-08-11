@@ -528,6 +528,36 @@ $EDITOR plan.json             # edit by hand if you like
 unbraid apply --plan plan.json
 ```
 
+## Staying up to date
+
+unbraid checks npm once a day, in the background, and mentions it after a command finishes:
+
+```
+Update available  0.7.0 → 0.8.0
+npm i -g unbraid@latest
+```
+
+It never delays a run — the check reads a local cache and refreshes afterwards, so a new
+release is mentioned on your next run rather than blocking the current one. The command shown
+matches how you installed it, whether that was npm, pnpm, or bun.
+
+**It stays quiet when a notice would be unwelcome:** in CI, when output is piped, when you
+installed via `npx` (which already fetches the newest version every time), and **when your
+provider runs on your own machine** — if you chose Ollama to keep everything local, unbraid
+does not make an outbound request you did not ask for.
+
+Turn it off entirely:
+
+```yaml
+# .unbraidrc.yaml
+updateCheck: false
+```
+
+or set `UNBRAID_NO_UPDATE_CHECK=1`.
+
+The check is a plain GET for a version number. It sends no identifier, no telemetry, and
+nothing about you or your code.
+
 ## Troubleshooting
 
 **`command not found: unbraid`**
