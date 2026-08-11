@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { createPrDraft, buildPrPrompt, buildPrSystemPrompt } from './pr.js'
+import {
+  createPrDraft,
+  buildPrPrompt,
+  buildPrSystemPrompt,
+  trimResponse,
+  MAX_CHANGES,
+  MAX_CHANGE_LENGTH,
+} from './pr.js'
 import { defaultConfig } from '../config/schema.js'
 import type { BranchSummary } from '../git/branch.js'
 import type { Provider, CompletionRequest } from '../providers/types.js'
@@ -15,6 +22,7 @@ const summary: BranchSummary = {
   insertions: 420,
   deletions: 87,
   diffstat: ' src/settings.tsx | 12 +++---\n 2 files changed',
+  merges: [],
 }
 
 function stubProvider(
@@ -70,6 +78,62 @@ describe('buildPrSystemPrompt', () => {
   })
 })
 
+// Found in a real 64-commit branch: merging another branch in dragged all of
+// its commits into the description, so the PR summarised somebody else's work.
+describe('merged-in branches', () => {
+  const merged: BranchSummary = {
+    ...summary,
+    merges: ["Merge branch 'other-feature' into mine"],
+  }
+
+  it('tells the model which work is not this branch\'s', () => {
+    const prompt = buildPrPrompt(merged)
+    expect(prompt).toContain('Merged in from other branches')
+    expect(prompt).toContain("other-feature")
+    expect(prompt).toMatch(/NOT this branch/)
+  })
+
+  it('says nothing about merges when there are none', () => {
+    expect(buildPrPrompt(summary)).not.toContain('Merged in from other branches')
+  })
+
+  it('notes merges in the footer', async () => {
+    const draft = await createPrDraft(merged, defaultConfig(), stubProvider(response))
+    expect(draft.body).toContain('includes 1 merge(s)')
+  })
+})
+
+describe('length caps', () => {
+  it('drops bullets past the maximum', () => {
+    const trimmed = trimResponse({
+      ...response,
+      changes: Array.from({ length: 20 }, (_, i) => `change ${i}`),
+    })
+    expect(trimmed.changes).toHaveLength(MAX_CHANGES)
+  })
+
+  it('shortens an over-long bullet at a word boundary', () => {
+    const trimmed = trimResponse({
+      ...response,
+      changes: [`${'word '.repeat(60)}end`],
+    })
+    expect(trimmed.changes[0]!.length).toBeLessThanOrEqual(MAX_CHANGE_LENGTH + 1)
+    expect(trimmed.changes[0]).toMatch(/…$/)
+    // Cut between words, not mid-word.
+    expect(trimmed.changes[0]).not.toMatch(/wor…$/)
+  })
+
+  it('leaves short content alone', () => {
+    const trimmed = trimResponse({ ...response, changes: ['short one', 'short two'] })
+    expect(trimmed.changes).toEqual(['short one', 'short two'])
+  })
+
+  it('removes blank bullets', () => {
+    const trimmed = trimResponse({ ...response, changes: ['real', '   ', ''] })
+    expect(trimmed.changes).toEqual(['real'])
+  })
+})
+
 describe('createPrDraft', () => {
   it('renders a title and a structured body', async () => {
     const draft = await createPrDraft(summary, defaultConfig(), stubProvider(response))
@@ -83,7 +147,7 @@ describe('createPrDraft', () => {
 
   it('appends a size footer', async () => {
     const draft = await createPrDraft(summary, defaultConfig(), stubProvider(response))
-    expect(draft.body).toContain('2 commits · 10 files changed · +420/-87')
+    expect(draft.body).toContain('2 commits · 10 files · +420/-87')
   })
 
   it('omits the testing section when the model has nothing to say', async () => {

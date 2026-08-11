@@ -138,11 +138,22 @@ async function runReview(
   })
 }
 
-async function confirm(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY) return false
+/**
+ * Ask a yes/no question.
+ *
+ * `defaultYes` is for steps the user has already implicitly asked for — pushing
+ * a branch when they ran `unbraid pr --open` is a prerequisite of the thing they
+ * requested, not a separate decision. Prompts that stand on their own, such as
+ * creating commits or sending credential-shaped files to a third party, keep
+ * the default of No.
+ */
+async function confirm(question: string, defaultYes = false): Promise<boolean> {
+  if (!process.stdin.isTTY) return defaultYes
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
-    const answer = (await rl.question(`${question} [y/N] `)).trim().toLowerCase()
+    const suffix = defaultYes ? '[Y/n]' : '[y/N]'
+    const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase()
+    if (answer === '') return defaultYes
     return answer === 'y' || answer === 'yes'
   } finally {
     rl.close()
@@ -478,7 +489,7 @@ addProviderOptions(
             confirm: async (reason, pushTarget) => {
               if (flags.yes) return true
               console.error(`\n${yellow(reason)}`)
-              return confirm(`Push to ${pushTarget}?`)
+              return confirm(`Push to ${pushTarget}?`, true)
             },
             onPushed: () => console.error(green('  ✓ pushed')),
           })

@@ -3,6 +3,11 @@ import type { Config } from '../config/schema.js'
 import type { BranchSummary } from '../git/branch.js'
 import { extractTicket } from '../git/branch.js'
 
+/** Hard caps. A description nobody finishes reading has failed at its job. */
+export const MAX_CHANGES = 6
+export const MAX_CHANGE_LENGTH = 120
+export const MAX_SUMMARY_LENGTH = 300
+
 export const PR_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
@@ -12,17 +17,20 @@ export const PR_SCHEMA: JsonSchema = {
     },
     summary: {
       type: 'string',
-      description: 'One or two sentences a reviewer reads first.',
+      description:
+        'Why this change exists, in one or two sentences. Not a list of what changed.',
     },
     changes: {
       type: 'array',
+      maxItems: MAX_CHANGES,
       items: { type: 'string' },
-      description: 'The substantive changes, one bullet each. No trivia.',
+      description:
+        'Up to 6 bullets. One short line each, under 120 characters, no sub-clauses. Only changes a reviewer must know about. Omit refactors, formatting, and anything obvious from the diff.',
     },
     testing: {
       type: 'string',
       description:
-        'How this was or should be verified. Empty string if the commits give no signal.',
+        'Concrete steps a reviewer can follow to check this works, as short numbered lines. Empty string if the commits give no signal — never invent steps.',
     },
   },
   required: ['title', 'summary', 'changes', 'testing'],
@@ -43,19 +51,43 @@ interface PrResponse {
 
 export function buildPrSystemPrompt(config: Config): string {
   return [
-    'You write pull request descriptions from a branch of commits.',
+    'You write pull request descriptions.',
     '',
-    'Write for a reviewer who has not seen this work and has limited time.',
-    '- The title states what the branch delivers, in one line.',
-    '- The summary is one or two sentences of context: what changed and why.',
-    '- Bullets cover substantive changes only. Skip formatting, lockfiles, and renames.',
-    '- Explain intent. A reviewer can read the diff; they cannot read your reasoning.',
-    '- Never invent testing, issue numbers, or context the commits do not support.',
-    `- Write in ${config.message.language}.`,
+    'Your reader is a busy reviewer deciding whether to approve. They will skim.',
+    'A description they abandon halfway is worse than a short one.',
+    '',
+    'Rules:',
+    '- Title: one line, what this delivers.',
+    '- Summary: one or two sentences on WHY this exists. Not a list of what changed.',
+    `- Changes: at most ${MAX_CHANGES} bullets, one short line each, under ${MAX_CHANGE_LENGTH} characters.`,
+    '- Testing: concrete steps to verify it. Numbered, terse, actionable.',
+    '',
+    'Leave out:',
+    '- Anything obvious from reading the diff. They can read the diff.',
+    '- Refactors, formatting, renames, lockfiles, and generated files.',
+    '- Restating the file list, or the same point in two bullets.',
+    '- Preamble such as "This PR ..." — start with the substance.',
+    '',
+    'Never invent testing steps, issue numbers, or context the commits do not support.',
+    'If the commits give no signal about testing, return an empty string for it.',
+    `Write in ${config.message.language}.`,
   ].join('\n')
 }
 
 export function buildPrPrompt(summary: BranchSummary): string {
+  const merges =
+    summary.merges.length > 0
+      ? [
+          '',
+          '## Merged in from other branches',
+          ...summary.merges.map((subject) => `- ${subject}`),
+          '',
+          'Those changes are in the diff but are NOT this branch\'s work.',
+          'Do not describe them. Mention them in one bullet only if a reviewer',
+          'would otherwise be confused by their presence.',
+        ].join('\n')
+      : ''
+
   const commits = summary.commits
     .map((commit) => {
       const body = commit.body ? `\n${indent(commit.body)}` : ''
@@ -72,6 +104,7 @@ export function buildPrPrompt(summary: BranchSummary): string {
     '',
     '## Files changed',
     summary.diffstat || '(none)',
+    merges,
   ].join('\n')
 }
 
@@ -104,8 +137,39 @@ export async function createPrDraft(
 
   return {
     title: applyTicket(response.title, summary.branch, config),
-    body: renderBody(response, summary),
+    body: renderBody(trimResponse(response), summary),
   }
+}
+
+/**
+ * Enforce the length caps in code.
+ *
+ * Schema `maxItems` and a prompt asking for brevity both help, and neither is a
+ * guarantee. The caps exist because an unread description is a failed one.
+ */
+export function trimResponse(response: PrResponse): PrResponse {
+  return {
+    ...response,
+    summary: truncate(response.summary.trim(), MAX_SUMMARY_LENGTH),
+    changes: response.changes
+      .map((change) => truncate(change.trim(), MAX_CHANGE_LENGTH))
+      .filter((change) => change.length > 0)
+      .slice(0, MAX_CHANGES),
+  }
+}
+
+function truncate(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  // Cut at a word boundary so the result does not end mid-token.
+  const cut = text.slice(0, limit)
+  const lastSpace = cut.lastIndexOf(' ')
+  return `${(lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
+}
+
+function dim(summary: BranchSummary): string {
+  const merged =
+    summary.merges.length > 0 ? ` · includes ${summary.merges.length} merge(s)` : ''
+  return `${summary.commits.length} commits · ${summary.filesChanged} files · +${summary.insertions}/-${summary.deletions}${merged}`
 }
 
 function applyTicket(title: string, branch: string, config: Config): string {
@@ -133,8 +197,7 @@ export function renderBody(
   sections.push(
     '',
     '---',
-    '',
-    `${summary.commits.length} commits · ${summary.filesChanged} files changed · +${summary.insertions}/-${summary.deletions}`,
+    `${dim(summary)}`,
   )
 
   return sections.join('\n')

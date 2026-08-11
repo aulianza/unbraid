@@ -244,14 +244,26 @@ feat/exchange-rate → master · 3 commits · 5 files
 feat/exchange-rate has not been pushed yet. GitHub cannot open a pull
 request for a branch it cannot see.
 
-Push to origin/feat/exchange-rate? [y/N] y
+Push to origin/feat/exchange-rate? [Y/n]
   ✓ pushed
 
 Opening aulianza/tripana in your browser…
 ```
 
+Press Enter to accept — you already asked for a pull request, so pushing the branch is part of
+what you asked for.
+
 It also catches the quieter version of that problem — a branch that *is* pushed but has newer
 local commits, which would otherwise produce a pull request silently missing your latest work.
+
+**It describes your branch, not branches you merged in.** If you merged `dev` or another
+feature branch into yours, those commits are in the diff but they aren't your work — unbraid
+leaves them out of the description and notes their presence in one line instead. A branch with
+two commits of its own reads as two, not sixty-four.
+
+**Descriptions are kept short on purpose:** why the change exists, at most six one-line
+bullets, and concrete testing steps. A description nobody finishes reading has failed at its
+job.
 
 **Choosing the target branch.** By default unbraid works out what you'd merge into: the
 remote's default branch, falling back to `main`, `master`, `develop`, or `trunk`. Override it

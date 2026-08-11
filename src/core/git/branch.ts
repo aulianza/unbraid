@@ -16,6 +16,13 @@ export interface BranchSummary {
   deletions: number
   /** `git diff --stat` against the merge base. */
   diffstat: string
+  /**
+   * Subjects of merge commits on this branch.
+   *
+   * Their contents are in the diff but are not this branch's work, so the
+   * description should acknowledge them rather than describe them.
+   */
+  merges: string[]
 }
 
 export class BranchError extends Error {
@@ -112,6 +119,7 @@ export async function summarizeBranch(
   const mergeBase = mergeBaseResult.stdout.trim()
 
   const commits = await readCommits(git, mergeBase)
+  const merges = await readMerges(git, mergeBase)
   if (commits.length === 0) {
     throw new BranchError(
       `"${branch}" has no commits that "${base}" does not already have.`,
@@ -136,13 +144,34 @@ export async function summarizeBranch(
     await git.runRaw(['diff', '--stat', '--stat-width=80', `${mergeBase}..HEAD`])
   ).stdout.trim()
 
-  return { branch, base, commits, filesChanged, insertions, deletions, diffstat }
+  return {
+    branch,
+    base,
+    commits,
+    filesChanged,
+    insertions,
+    deletions,
+    diffstat,
+    merges,
+  }
 }
 
+/**
+ * Commits made on this branch, excluding those absorbed from other branches.
+ *
+ * `--first-parent` is what makes that distinction. Without it, merging another
+ * branch in drags every one of its commits into this list, and the description
+ * ends up summarising somebody else's work: a branch with two commits of its own
+ * reads as sixty-four.
+ *
+ * Those commits are still in the diff, and the file counts still reflect them.
+ * They are simply not what this branch did.
+ */
 async function readCommits(git: Git, from: string): Promise<BranchCommit[]> {
   const result = await git.runRaw([
     'log',
     '--reverse',
+    '--first-parent',
     '--no-merges',
     '--format=%H%x1f%s%x1f%b%x1e',
     `${from}..HEAD`,
@@ -157,6 +186,19 @@ async function readCommits(git: Git, from: string): Promise<BranchCommit[]> {
       const [sha = '', subject = '', body = ''] = record.split('\x1f')
       return { sha: sha.trim(), subject: subject.trim(), body: body.trim() }
     })
+}
+
+/** Merge commits on this branch, so the description can acknowledge them. */
+async function readMerges(git: Git, from: string): Promise<string[]> {
+  const result = await git.runRaw([
+    'log',
+    '--merges',
+    '--first-parent',
+    '--format=%s',
+    `${from}..HEAD`,
+  ])
+  if (result.code !== 0) return []
+  return result.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
 }
 
 export interface UpstreamStatus {
