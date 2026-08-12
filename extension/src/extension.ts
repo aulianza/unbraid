@@ -9,6 +9,7 @@ import {
 import { readSettings } from './settings.js'
 import { reviewPlan } from './panel.js'
 import { SidebarView, type SidebarMessage } from './sidebar.js'
+import { SettingsView } from './settings-view.js'
 import { RepoWatcher } from './watcher.js'
 import { statusLabel, statusTooltip, type RepoSummary } from './repo-state.js'
 import { toFileGroups, untrackedPaths, describeDiscard } from './file-list.js'
@@ -20,6 +21,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('unbraid', { log: true })
 
   const tree = new ChangesTree()
+  const settingsView = new SettingsView(context.extensionUri, (message) => {
+    void handleSidebar(message, output, () => watcher.refresh())
+  })
   const sidebar = new SidebarView(context.extensionUri, (message) => {
     void handleSidebar(message, output, () => watcher.refresh())
   })
@@ -33,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const watcher = new RepoWatcher(
     () => resolveFolder()?.uri.fsPath,
     async (summary) => {
-      await refreshSidebar(sidebar, tree, summary)
+      await refreshSidebar(sidebar, tree, settingsView, summary)
 
       const enabled = vscode.workspace
         .getConfiguration('unbraid')
@@ -57,6 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
     status,
     watcher,
     vscode.window.registerWebviewViewProvider(SidebarView.viewType, sidebar),
+    vscode.window.registerWebviewViewProvider(SettingsView.viewType, settingsView),
     vscode.window.createTreeView(ChangesTree.viewId, { treeDataProvider: tree }),
 
     // Tree actions. Each resolves its paths from what was clicked, then hands
@@ -306,6 +311,7 @@ function pathsOf(node: Node | undefined): string[] {
 async function refreshSidebar(
   sidebar: SidebarView,
   tree: ChangesTree,
+  settingsView: SettingsView,
   summary: RepoSummary | null,
 ): Promise<void> {
   const cwd = resolveFolder()?.uri.fsPath
@@ -320,6 +326,8 @@ async function refreshSidebar(
       provider: settings.get<string>('provider', 'auto'),
     },
   }
+
+  settingsView.update({ ...base.settings, hasRepoConfig: false })
 
   if (!cwd || !summary) {
     tree.update(null, null)
@@ -349,7 +357,12 @@ async function refreshSidebar(
       groups,
       branch,
       syncLabel: describeSync(branch),
-      // Worth surfacing: a repo config silently outranks the settings above it.
+      // Worth surfacing: a repo config silently outranks the settings shown.
+      hasRepoConfig: loaded.filesRead.some((file) => file.includes('.unbraidrc')),
+    })
+
+    settingsView.update({
+      ...base.settings,
       hasRepoConfig: loaded.filesRead.some((file) => file.includes('.unbraidrc')),
     })
   } catch {

@@ -18,8 +18,8 @@ body {
 
 .summary {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   padding-bottom: 12px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--vscode-panel-border);
@@ -42,13 +42,17 @@ body {
   padding: 10px 12px;
 }
 
-.index {
+/* A marker column, so the eye can run down the commits without reading. */
+.marker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--vscode-descriptionForeground);
-  font-variant-numeric: tabular-nums;
-  min-width: 1.4em;
-  text-align: right;
   padding-top: 2px;
+  flex-shrink: 0;
 }
+
+.index { font-variant-numeric: tabular-nums; min-width: 1.1em; text-align: right; }
 
 .title-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
@@ -94,14 +98,20 @@ body {
 }
 
 .warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   color: var(--vscode-editorWarning-foreground);
   font-size: 0.9em;
-  padding: 0 12px 8px 44px;
+  padding: 0 12px 8px 48px;
 }
 
-.files { list-style: none; margin: 0; padding: 0 12px 10px 44px; display: flex; flex-direction: column; gap: 2px; }
+.files { list-style: none; margin: 0; padding: 0 12px 10px 48px; display: flex; flex-direction: column; gap: 2px; }
 
 .file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
   color: var(--vscode-textLink-foreground);
@@ -122,7 +132,33 @@ body {
 .file .partial { color: var(--vscode-editorWarning-foreground); }
 .file .count { color: var(--vscode-descriptionForeground); }
 
-.actions { display: flex; gap: 6px; padding: 0 12px 10px 44px; flex-wrap: wrap; }
+/* Actions appear on hover, so a long plan reads as a list of commits rather
+   than a wall of buttons. Keyboard focus reveals them too, or they would be
+   unreachable without a mouse. */
+.actions {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px 10px 48px;
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+.commit:hover .actions,
+.commit:focus-within .actions { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .actions { transition: none; }
+}
+
+button.action.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 7px;
+  background: none;
+  color: var(--vscode-foreground);
+}
+button.action.icon:hover:not([disabled]) { background: var(--vscode-toolbar-hoverBackground); }
+button.action.icon[disabled] { opacity: 0.3; }
 
 button.action {
   background: var(--vscode-button-secondaryBackground);
@@ -161,6 +197,9 @@ button.action[disabled] { opacity: 0.4; cursor: default; }
 }
 
 button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: none;
@@ -175,3 +214,12 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
 button.primary:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
 .hint { color: var(--vscode-descriptionForeground); font-size: 0.88em; margin-left: auto; }
+
+/* The commit under the cursor is lifted slightly, so a long plan still has a
+   sense of place. */
+.commit { transition: border-color 90ms ease-out; }
+.commit:hover { border-color: var(--vscode-focusBorder); }
+
+@media (prefers-reduced-motion: reduce) {
+  .commit { transition: none; }
+}

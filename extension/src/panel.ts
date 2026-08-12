@@ -104,6 +104,9 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const styles = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'panel.css'),
   )
+  const codicons = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, 'media', 'codicon', 'codicon.css'),
+  )
   // A nonce so the CSP can allow exactly this one script and nothing else.
   const nonce = createNonce()
 
@@ -111,8 +114,9 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="${codicons}" rel="stylesheet">
 <link href="${styles}" rel="stylesheet">
 <title>unbraid</title>
 </head>

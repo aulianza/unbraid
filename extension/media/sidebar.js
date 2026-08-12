@@ -13,10 +13,6 @@ const root = /** @type {HTMLElement} */ (document.getElementById('root'))
 /** @type {any} */
 let data = null
 
-const saved = vscode.getState() || { open: { staged: true, changes: true, settings: false } }
-let open = saved.open
-
-const persist = () => vscode.setState({ open })
 const send = (message) => vscode.postMessage(message)
 
 window.addEventListener('message', (event) => {
@@ -31,8 +27,6 @@ function render() {
   if (!data) return
 
   root.append(renderHead())
-
-  root.append(renderSettings())
 }
 
 function renderHead() {
@@ -86,105 +80,6 @@ function renderHead() {
   return head
 }
 
-function renderSettings() {
-  const node = el('div', { class: 'section' })
-
-  const head = el('button', { class: 'section-head', type: 'button' })
-  head.append(el('span', { class: 'chevron' }, open.settings ? '⌄' : '›'))
-  head.append(el('span', {}, 'Settings'))
-  head.addEventListener('click', () => {
-    open.settings = !open.settings
-    persist()
-    render()
-  })
-  node.append(head)
-
-  if (!open.settings) return node
-
-  const body = el('div', { class: 'settings' })
-
-  body.append(
-    select('granularity', 'Commit size', data.settings.granularity, [
-      ['fine', 'One commit per file'],
-      ['semantic', 'One per feature or fix'],
-      ['coarse', 'Few, large commits'],
-    ]),
-    checkbox('hunks', 'Split files that mix concerns', data.settings.hunks,
-      'Lets one file’s changes go into different commits.'),
-    select('provider', 'AI provider', data.settings.provider, [
-      ['auto', 'Automatic'],
-      ['claude-cli', 'Claude Code (free with a subscription)'],
-      ['anthropic', 'Anthropic API'],
-      ['openai-compatible', 'OpenAI-compatible'],
-    ]),
-  )
-
-  const setup = el('button', { class: 'wide secondary', type: 'button' }, 'Set up a provider…')
-  setup.addEventListener('click', () => send({ type: 'setup' }))
-  body.append(setup)
-
-  if (data.hasRepoConfig) {
-    body.append(
-      el(
-        'p',
-        { class: 'why' },
-        'This repository has its own .unbraidrc.yaml, which overrides these settings.',
-      ),
-    )
-  }
-
-  node.append(body)
-  return node
-}
-
-function select(key, label, value, options) {
-  const field = el('div', { class: 'field' })
-  field.append(el('label', { for: `f-${key}` }, label))
-
-  const node = el('select', { id: `f-${key}` })
-  for (const [optionValue, optionLabel] of options) {
-    const option = el('option', { value: optionValue }, optionLabel)
-    if (optionValue === value) option.setAttribute('selected', 'true')
-    node.append(option)
-  }
-  node.addEventListener('change', () =>
-    send({ type: 'setting', key, value: node.value }),
-  )
-
-  field.append(node)
-  return field
-}
-
-function checkbox(key, label, value, why) {
-  const wrap = el('div', { class: 'field' })
-  const row = el('div', { class: 'field check' })
-
-  const node = el('input', { type: 'checkbox', id: `f-${key}` })
-  if (value) node.setAttribute('checked', 'true')
-  node.addEventListener('change', () =>
-    send({ type: 'setting', key, value: node.checked }),
-  )
-
-  row.append(node, el('label', { for: `f-${key}` }, label))
-  wrap.append(row, el('span', { class: 'why' }, why))
-  return wrap
-}
-
-function iconButton(glyph, title, onClick, danger = false) {
-  const node = el('button', {
-    class: `icon-btn${danger ? ' danger' : ''}`,
-    type: 'button',
-    title,
-    'aria-label': title,
-  }, glyph)
-  node.addEventListener('click', (event) => {
-    event.stopPropagation()
-    onClick()
-  })
-  return node
-}
-
-/** Build an element. Text always goes through textContent, never innerHTML. */
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag)
   for (const [key, value] of Object.entries(attrs ?? {})) {

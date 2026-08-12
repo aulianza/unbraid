@@ -44,6 +44,7 @@ function render() {
     el(
       'div',
       { class: 'summary' },
+      icon('git-commit'),
       el('strong', {}, `${view.commits.length} commit${view.commits.length === 1 ? '' : 's'}`),
       el('span', { class: 'muted' }, `from ${view.totalFiles} file${view.totalFiles === 1 ? '' : 's'}`),
     ),
@@ -65,9 +66,16 @@ function render() {
     el(
       'div',
       { class: 'footer' },
-      button('primary', `Commit ${view.commits.length === 1 ? 'it' : `all ${view.commits.length}`}`, () =>
-        send({ type: 'commit' }),
-      ),
+      (() => {
+        const commit = button('primary', '', () => send({ type: 'commit' }))
+        commit.append(icon('check'))
+        commit.append(
+          document.createTextNode(
+            ` Commit ${view.commits.length === 1 ? 'it' : `all ${view.commits.length}`}`,
+          ),
+        )
+        return commit
+      })(),
       button('action', 'Cancel', () => send({ type: 'cancel' })),
       el('span', { class: 'hint' }, 'Your files are never modified — only staged and committed.'),
     ),
@@ -110,7 +118,12 @@ function renderCommit(commit, index) {
     el(
       'div',
       { class: 'commit-head' },
-      el('span', { class: 'index' }, String(index + 1)),
+      el(
+        'span',
+        { class: 'marker' },
+        icon(commit.locked ? 'lock' : 'git-commit'),
+        el('span', { class: 'index' }, String(index + 1)),
+      ),
       titleArea,
       commit.locked ? el('span', { class: 'badge' }, 'pre-staged') : null,
       el('span', { class: 'meta' }, commit.fileSummary),
@@ -118,13 +131,14 @@ function renderCommit(commit, index) {
   )
 
   for (const warning of commit.warnings) {
-    node.append(el('div', { class: 'warning' }, `! ${warning}`))
+    node.append(el('div', { class: 'warning' }, icon('warning'), el('span', {}, warning)))
   }
 
   const files = el('ul', { class: 'files' })
   for (const file of commit.files) {
     const item = el('li', {})
     const link = button('file', '', () => send({ type: 'openFile', path: file.path }))
+    link.append(icon(file.partial ? 'diff' : 'file'))
     link.append(document.createTextNode(file.path))
     if (file.partial) {
       link.append(el('span', { class: 'partial' }, ` (${file.partial} of its changes)`))
@@ -140,18 +154,32 @@ function renderCommit(commit, index) {
     el(
       'div',
       { class: 'actions' },
-      button('action', 'Move up', () => actOn(index, { type: 'move-commit', delta: -1 }), index === 0),
-      button(
-        'action',
+      iconAction('arrow-up', 'Move up', () => actOn(index, { type: 'move-commit', delta: -1 }), index === 0),
+      iconAction(
+        'arrow-down',
         'Move down',
         () => actOn(index, { type: 'move-commit', delta: 1 }),
         index === view.commits.length - 1,
       ),
-      button('action', 'Merge up', () => actOn(index, { type: 'merge-up' }), index === 0 || commit.locked),
-      button('action', 'Remove', () => actOn(index, { type: 'dissolve' }), commit.locked),
+      iconAction('fold-up', 'Merge into the commit above', () => actOn(index, { type: 'merge-up' }), index === 0 || commit.locked),
+      iconAction('trash', 'Remove — its files go back to the pile', () => actOn(index, { type: 'dissolve' }), commit.locked),
     ),
   )
 
+  return node
+}
+
+/** A codicon. VS Code's own icon font, the one thing a webview can use. */
+function icon(name) {
+  return el('span', { class: `codicon codicon-${name}`, 'aria-hidden': 'true' })
+}
+
+/** An icon button that still names itself for screen readers and on hover. */
+function iconAction(name, title, onClick, disabled = false) {
+  const node = el('button', { class: 'action icon', type: 'button', title, 'aria-label': title })
+  node.append(icon(name))
+  if (disabled) node.setAttribute('disabled', 'true')
+  else node.addEventListener('click', onClick)
   return node
 }
 
