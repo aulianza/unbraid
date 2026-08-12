@@ -41,6 +41,11 @@
         "command": "unbraid.setup",
         "title": "Set up a provider",
         "category": "unbraid"
+      },
+      {
+        "command": "unbraid.draftPullRequest",
+        "title": "Draft a pull request",
+        "category": "unbraid"
       }
     ],
     "menus": {
@@ -58,6 +63,10 @@
         },
         {
           "command": "unbraid.setup",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.draftPullRequest",
           "when": "workspaceFolderCount != 0"
         }
       ]
@@ -95,8 +104,31 @@
           ],
           "default": "auto",
           "markdownDescription": "Which AI writes the messages. `auto` prefers an installed Claude Code, which is free with an existing subscription."
+        },
+        "unbraid.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a status bar item with the number of uncommitted files."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "unbraid",
+          "title": "unbraid",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "unbraid": [
+        {
+          "id": "unbraid.sidebar",
+          "name": "unbraid",
+          "type": "webview"
+        }
+      ]
     }
   },
   "scripts": {

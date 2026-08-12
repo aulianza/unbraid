@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/aulianza/unbraid/master/assets/logo.svg" alt="" width="72" height="72">
+<img src="https://raw.githubusercontent.com/aulianza/unbraid/master/assets/logo.png" alt="" width="72" height="72">
 
 # unbraid for VS Code
 

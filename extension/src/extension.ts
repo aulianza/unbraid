@@ -8,17 +8,57 @@ import {
 } from 'unbraid'
 import { readSettings } from './settings.js'
 import { reviewPlan } from './panel.js'
+import { SidebarView } from './sidebar.js'
+import { RepoWatcher } from './watcher.js'
+import { statusLabel, statusTooltip } from './repo-state.js'
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('unbraid', { log: true })
-  context.subscriptions.push(output)
+
+  const sidebar = new SidebarView(context.extensionUri)
+  const status = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    // Just left of the SCM branch indicator, where git information already lives.
+    -1,
+  )
+  status.command = 'unbraid.createCommits'
+
+  const watcher = new RepoWatcher(
+    () => resolveFolder()?.uri.fsPath,
+    (summary) => {
+      sidebar.update(summary)
+
+      const enabled = vscode.workspace
+        .getConfiguration('unbraid')
+        .get<boolean>('statusBar', true)
+      const label = statusLabel(summary)
+
+      // An empty label means a clean tree: hide rather than show a zero, which
+      // would be noise in a bar that is already crowded.
+      if (!enabled || label === '') {
+        status.hide()
+      } else {
+        status.text = `$(git-merge) ${label}`
+        status.tooltip = statusTooltip(summary)
+        status.show()
+      }
+    },
+  )
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('unbraid.createCommits', () =>
-      createCommits(context, output),
-    ),
-    vscode.commands.registerCommand('unbraid.setup', runSetup),
+    output,
+    status,
+    watcher,
+    vscode.window.registerWebviewViewProvider(SidebarView.viewType, sidebar),
+    vscode.commands.registerCommand('unbraid.createCommits', async () => {
+      await createCommits(context, output)
+      await watcher.refresh()
+    }),
+    vscode.commands.registerCommand('unbraid.draftPullRequest', () => draftPullRequest()),
+    vscode.commands.registerCommand('unbraid.setup', () => runSetup()),
   )
+
+  watcher.start()
 }
 
 export function deactivate(): void {}
@@ -175,6 +215,24 @@ async function reportFailure(
     'Show output',
   )
   if (choice === 'Show output') output.show()
+}
+
+/**
+ * Pull request drafting runs in a terminal rather than a panel.
+ *
+ * `unbraid pr` already prints a reviewable draft and can open the browser or
+ * the GitHub CLI; wrapping that in a webview would add a step without adding
+ * anything.
+ */
+function draftPullRequest(): void {
+  const cwd = resolveFolder()?.uri.fsPath
+  if (!cwd) {
+    void vscode.window.showErrorMessage('unbraid: open a folder first.')
+    return
+  }
+  const terminal = vscode.window.createTerminal({ name: 'unbraid pr', cwd })
+  terminal.show()
+  terminal.sendText('npx unbraid pr --web')
 }
 
 /** Hand setup to the CLI's own wizard, which already verifies its result. */

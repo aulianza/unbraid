@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!--
+    Activity bar icon. Stroked in currentColor so VS Code can theme it for
+    active, inactive, and high-contrast states; a hardcoded colour would look
+    wrong in at least one of them.
+  -->
+  <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+    <path d="M3 12h18"/>
+    <path d="M9.5 12c3.5 0 3.5-5 7-5H21"/>
+    <path d="M9.5 12c3.5 0 3.5 5 7 5H21"/>
+  </g>
+</svg>

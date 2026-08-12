@@ -5,11 +5,8 @@
       "name": "Run the extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/extension"
-      ],
-      "outFiles": ["${workspaceFolder}/extension/dist/**/*.js"],
-      "preLaunchTask": "npm: build - extension"
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extension"],
+      "outFiles": ["${workspaceFolder}/extension/dist/**/*.js"]
     }
   ]
 }
