@@ -318,7 +318,9 @@
     "build": "tsup",
     "watch": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "package": "npm run build && vsce package --no-dependencies"
+    "package": "npm run build && vsce package --no-dependencies",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "ovsx publish unbraid-vscode-$npm_package_version.vsix"
   },
   "dependencies": {
     "unbraid": "file:.."
@@ -327,6 +329,7 @@
     "@types/vscode": "^1.90.0",
     "@vscode/codicons": "^0.0.46-24",
     "@vscode/vsce": "^3.2.1",
+    "ovsx": "^1.1.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
   }

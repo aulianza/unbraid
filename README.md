@@ -7,12 +7,13 @@
 **Turn a messy pile of changes into clean, well-described commits — automatically.**
 
 [![CI](https://github.com/aulianza/unbraid/actions/workflows/ci.yml/badge.svg)](https://github.com/aulianza/unbraid/actions/workflows/ci.yml)
+[![Open VSX](https://img.shields.io/open-vsx/v/aulianza/unbraid-vscode?label=vs%20code&color=3178c6)](https://open-vsx.org/extension/aulianza/unbraid-vscode)
 [![npm version](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
 [![npm downloads](https://img.shields.io/npm/dm/unbraid?color=cb3837)](https://www.npmjs.com/package/unbraid)
 [![node](https://img.shields.io/node/v/unbraid)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**[npm](https://www.npmjs.com/package/unbraid)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
+**[npm](https://www.npmjs.com/package/unbraid)** · **[VS Code extension](https://open-vsx.org/extension/aulianza/unbraid-vscode)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
 
 </div>
 
@@ -66,6 +67,22 @@ Press `c` and you get six commits instead of one. The whole thing takes about a 
 > plain-English [glossary](#glossary) at the bottom. You don't need to read it first.
 
 ## Install
+
+Two ways to use it. They share the same engine, so pick whichever fits how you work.
+
+### In your editor
+
+**[unbraid for VS Code](https://open-vsx.org/extension/aulianza/unbraid-vscode)** — an icon in
+the activity bar with your changed files, a review panel, and one-click undo. Works in VS Code,
+Cursor, Windsurf, and VSCodium.
+
+```bash
+code --install-extension aulianza.unbraid-vscode
+```
+
+Or search **unbraid** in the Extensions panel.
+
+### In your terminal
 
 You need [Node.js](https://nodejs.org) 20 or newer, and git.
 
@@ -600,6 +617,20 @@ separate commits.
 scan it quickly.
 
 **Working tree** — Your project files as they exist on disk right now.
+
+## The VS Code extension
+
+Everything below works from the command line. If you would rather stay in the editor, the
+extension gives you the same thing with a panel of its own:
+
+- Your changed files, with the icons and colours from whatever theme you already use
+- Stage, unstage, discard, switch branch, and sync — without opening Source Control
+- A review panel where you rename, merge, reorder, and drop commits before anything is written
+- **Undo the last run**, which puts HEAD and your staging back exactly as they were
+- `⌘⇧U` / `Ctrl+Shift+U` to start
+
+[Install it from Open VSX](https://open-vsx.org/extension/aulianza/unbraid-vscode) ·
+[source](extension/)
 
 ## Status
 
