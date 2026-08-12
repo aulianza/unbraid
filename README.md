@@ -73,14 +73,24 @@ Two ways to use it. They share the same engine, so pick whichever fits how you w
 ### In your editor
 
 **[unbraid for VS Code](https://open-vsx.org/extension/aulianza/unbraid-vscode)** — an icon in
-the activity bar with your changed files, a review panel, and one-click undo. Works in VS Code,
-Cursor, Windsurf, and VSCodium.
+the activity bar with your changed files, a review panel, and one-click undo.
+
+**Cursor, Windsurf, VSCodium, or Gitpod** — these read Open VSX, so search **unbraid** in the
+Extensions panel, or:
 
 ```bash
 code --install-extension aulianza.unbraid-vscode
 ```
 
-Or search **unbraid** in the Extensions panel.
+**VS Code itself** reads only Microsoft's Marketplace, where unbraid is not published yet, so
+install the file directly. Download the latest `.vsix` from
+[releases](https://github.com/aulianza/unbraid/releases), then:
+
+```bash
+code --install-extension ~/Downloads/unbraid-vscode-0.1.2.vsix
+```
+
+Or in the Extensions panel: `…` menu → **Install from VSIX**.
 
 ### In your terminal
 
