@@ -65,11 +65,11 @@ function render() {
     el(
       'div',
       { class: 'footer' },
-      button('primary', `Create ${view.commits.length} commit${view.commits.length === 1 ? '' : 's'}`, () =>
+      button('primary', `Commit ${view.commits.length === 1 ? 'it' : `all ${view.commits.length}`}`, () =>
         send({ type: 'commit' }),
       ),
       button('action', 'Cancel', () => send({ type: 'cancel' })),
-      el('span', { class: 'hint' }, 'Nothing is committed until you press Create.'),
+      el('span', { class: 'hint' }, 'Your files are never modified — only staged and committed.'),
     ),
   )
 }

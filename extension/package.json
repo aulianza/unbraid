@@ -33,7 +33,7 @@
     "commands": [
       {
         "command": "unbraid.createCommits",
-        "title": "Create commits with unbraid",
+        "title": "Preview commits",
         "category": "unbraid",
         "icon": "$(git-merge)"
       },

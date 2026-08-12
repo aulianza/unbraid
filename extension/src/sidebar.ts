@@ -117,9 +117,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
   <h2>${escape(headline)}</h2>
   ${detail ? `<p class="branch">on ${detail}</p>` : '<p class="branch"></p>'}
   ${staged}
-  <button id="commits" ${disabled}>Create commits</button>
+  <button id="commits" ${disabled}>Preview commits</button>
   <button id="pr" class="secondary">Draft a pull request</button>
-  <p class="hint">unbraid groups your changes into commits and writes a message for each. You review the plan before anything is written.</p>
+  <p class="hint">Groups your changes into commits and writes a message for each. Nothing is committed until you approve the plan.</p>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi()
     document.getElementById('commits').addEventListener('click', () =>
