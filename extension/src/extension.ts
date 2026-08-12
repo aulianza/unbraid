@@ -216,7 +216,11 @@ async function createCommits(
       },
     )
 
-    sidebar.setBusy('Waiting for your review…')
+    // Released before the review opens, not after it closes. The panel is the
+    // feedback from here on, and it can sit open for minutes while the plan is
+    // read — a progress stripe sweeping the whole time says "still working"
+    // when the only thing being waited on is the user.
+    sidebar.setBusy(null)
     const review = await reviewPlan(context, built.plan, built.state)
     if (review.outcome === 'cancel') {
       output.info('Cancelled. Nothing was committed.')
@@ -383,7 +387,6 @@ async function refreshSidebar(
 
   const base = {
     summary,
-    busy: null,
     settings: {
       granularity: settings.get<string>('granularity', 'semantic'),
       hunks: settings.get<boolean>('hunks', false),

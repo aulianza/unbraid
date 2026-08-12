@@ -71,8 +71,16 @@ export class SidebarView implements vscode.WebviewViewProvider {
     this.post()
   }
 
-  update(state: SidebarState): void {
-    this.state = state
+  /**
+   * Replace the repository state, preserving whatever the view is doing.
+   *
+   * `busy` is owned here rather than by the caller because a refresh can land
+   * mid-run — saving a file during a sixty-second grouping pass triggers one —
+   * and rebuilding the state from scratch would wipe the progress label while
+   * the work was still going.
+   */
+  update(state: Omit<SidebarState, 'busy'>): void {
+    this.state = { ...state, busy: this.state?.busy ?? null }
     this.post()
   }
 

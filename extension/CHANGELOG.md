@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- The Preview commits button no longer animates while the review panel is open.
+  It was waiting for you, not working, and a moving progress stripe says the
+  opposite.
+- A file saved during a run no longer clears the progress label.
+
 ## 0.1.1
 
 - Fix the extension icon, which shipped as a blank square. It was rendered from

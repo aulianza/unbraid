@@ -2,7 +2,7 @@
   "name": "unbraid-vscode",
   "displayName": "unbraid",
   "description": "Split a messy working tree into clean, well-described commits.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "aulianza",
   "license": "MIT",
   "repository": {
