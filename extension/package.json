@@ -46,6 +46,47 @@
         "command": "unbraid.draftPullRequest",
         "title": "Draft a pull request",
         "category": "unbraid"
+      },
+      {
+        "command": "unbraid.openChange",
+        "title": "Open change",
+        "category": "unbraid"
+      },
+      {
+        "command": "unbraid.stageFile",
+        "title": "Stage",
+        "category": "unbraid",
+        "icon": "$(add)"
+      },
+      {
+        "command": "unbraid.unstageFile",
+        "title": "Unstage",
+        "category": "unbraid",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "unbraid.discardFile",
+        "title": "Discard changes",
+        "category": "unbraid",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.stageAll",
+        "title": "Stage all",
+        "category": "unbraid",
+        "icon": "$(add)"
+      },
+      {
+        "command": "unbraid.unstageAll",
+        "title": "Unstage all",
+        "category": "unbraid",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "unbraid.discardAll",
+        "title": "Discard all changes",
+        "category": "unbraid",
+        "icon": "$(discard)"
       }
     ],
     "menus": {
@@ -68,6 +109,66 @@
         {
           "command": "unbraid.draftPullRequest",
           "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.openChange",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.stageFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.unstageFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.discardFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.unstageAll",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.discardAll",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "unbraid.stageFile",
+          "when": "view == unbraid.changes && viewItem == unstaged-file",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.discardFile",
+          "when": "view == unbraid.changes && viewItem == unstaged-file",
+          "group": "inline@2"
+        },
+        {
+          "command": "unbraid.unstageFile",
+          "when": "view == unbraid.changes && viewItem == staged-file",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.stageAll",
+          "when": "view == unbraid.changes && viewItem == group-changes",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.discardAll",
+          "when": "view == unbraid.changes && viewItem == group-changes",
+          "group": "inline@2"
+        },
+        {
+          "command": "unbraid.unstageAll",
+          "when": "view == unbraid.changes && viewItem == group-staged",
+          "group": "inline@1"
         }
       ]
     },
@@ -127,6 +228,10 @@
           "id": "unbraid.sidebar",
           "name": "unbraid",
           "type": "webview"
+        },
+        {
+          "id": "unbraid.changes",
+          "name": "Changes"
         }
       ]
     }

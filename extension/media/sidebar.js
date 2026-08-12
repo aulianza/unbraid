@@ -32,27 +32,6 @@ function render() {
 
   root.append(renderHead())
 
-  if (data.groups) {
-    root.append(
-      section('staged', 'Staged', data.groups.staged, [
-        iconButton('−', 'Unstage all', () =>
-          send({ type: 'unstage', paths: data.groups.staged.map((r) => r.path) }),
-        ),
-      ]),
-      section('changes', 'Changes', data.groups.changes, [
-        iconButton('+', 'Stage all', () =>
-          send({ type: 'stage', paths: data.groups.changes.map((r) => r.path) }),
-        ),
-        iconButton(
-          '↺',
-          'Discard all changes',
-          () => send({ type: 'discard', paths: data.groups.changes.map((r) => r.path) }),
-          true,
-        ),
-      ]),
-    )
-  }
-
   root.append(renderSettings())
 }
 
@@ -89,68 +68,6 @@ function renderHead() {
   head.append(pr)
 
   return head
-}
-
-function section(key, label, rows, actions) {
-  const node = el('div', { class: 'section' })
-
-  const head = el('button', { class: 'section-head', type: 'button' })
-  head.append(el('span', { class: 'chevron' }, open[key] ? '⌄' : '›'))
-  head.append(el('span', {}, label))
-
-  if (actions.length > 0 && rows.length > 0) {
-    const group = el('div', { class: 'section-actions' })
-    for (const action of actions) group.append(action)
-    head.append(group)
-  }
-  head.append(el('span', { class: 'count' }, String(rows.length)))
-
-  head.addEventListener('click', (event) => {
-    // Let the stage/discard buttons act without also toggling the section.
-    if (event.target !== head && event.target.closest('.icon-btn')) return
-    open[key] = !open[key]
-    persist()
-    render()
-  })
-  node.append(head)
-
-  if (!open[key]) return node
-
-  if (rows.length === 0) {
-    node.append(el('p', { class: 'empty' }, key === 'staged' ? 'Nothing staged.' : 'No changes.'))
-    return node
-  }
-
-  const list = el('ul', { class: 'files' })
-  for (const row of rows) list.append(renderRow(row, key))
-  node.append(list)
-
-  return node
-}
-
-function renderRow(row, key) {
-  const item = el('li', { class: 'row', title: row.path })
-  item.addEventListener('click', () => send({ type: 'openFile', path: row.path }))
-
-  item.append(el('span', { class: 'name' }, row.name))
-  if (row.collapsed) {
-    item.append(el('span', { class: 'collapsed' }, `${row.collapsed} files`))
-  }
-  item.append(el('span', { class: 'dir' }, row.dir))
-
-  const actions = el('div', { class: 'row-actions' })
-  if (key === 'staged') {
-    actions.append(iconButton('−', 'Unstage', () => send({ type: 'unstage', paths: [row.path] })))
-  } else {
-    actions.append(iconButton('+', 'Stage', () => send({ type: 'stage', paths: [row.path] })))
-    actions.append(
-      iconButton('↺', 'Discard changes', () => send({ type: 'discard', paths: [row.path] }), true),
-    )
-  }
-  item.append(actions)
-
-  item.append(el('span', { class: `letter ${row.letter}` }, row.letter))
-  return item
 }
 
 function renderSettings() {

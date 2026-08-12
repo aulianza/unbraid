@@ -12,12 +12,14 @@ import { SidebarView, type SidebarMessage } from './sidebar.js'
 import { RepoWatcher } from './watcher.js'
 import { statusLabel, statusTooltip, type RepoSummary } from './repo-state.js'
 import { toFileGroups, untrackedPaths, describeDiscard } from './file-list.js'
+import { ChangesTree, type Node } from './changes-tree.js'
 import { gitFor, stage, unstage, discard, branchInfo, pull, pushCurrent, describeSync } from './git-ops.js'
 import { readWorkingTree } from 'unbraid'
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('unbraid', { log: true })
 
+  const tree = new ChangesTree()
   const sidebar = new SidebarView(context.extensionUri, (message) => {
     void handleSidebar(message, output, () => watcher.refresh())
   })
@@ -31,7 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const watcher = new RepoWatcher(
     () => resolveFolder()?.uri.fsPath,
     async (summary) => {
-      await refreshSidebar(sidebar, summary)
+      await refreshSidebar(sidebar, tree, summary)
 
       const enabled = vscode.workspace
         .getConfiguration('unbraid')
@@ -55,6 +57,31 @@ export function activate(context: vscode.ExtensionContext): void {
     status,
     watcher,
     vscode.window.registerWebviewViewProvider(SidebarView.viewType, sidebar),
+    vscode.window.createTreeView(ChangesTree.viewId, { treeDataProvider: tree }),
+
+    // Tree actions. Each resolves its paths from what was clicked, then hands
+    // off to the same handler the panel uses, so there is one path per verb.
+    vscode.commands.registerCommand('unbraid.openChange', (path: string) =>
+      handleSidebar({ type: 'openFile', path }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.stageFile', (node: Node) =>
+      handleSidebar({ type: 'stage', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.unstageFile', (node: Node) =>
+      handleSidebar({ type: 'unstage', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.discardFile', (node: Node) =>
+      handleSidebar({ type: 'discard', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.stageAll', (node: Node) =>
+      handleSidebar({ type: 'stage', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.unstageAll', (node: Node) =>
+      handleSidebar({ type: 'unstage', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
+    vscode.commands.registerCommand('unbraid.discardAll', (node: Node) =>
+      handleSidebar({ type: 'discard', paths: pathsOf(node) }, output, () => watcher.refresh()),
+    ),
     vscode.commands.registerCommand('unbraid.createCommits', async () => {
       await createCommits(context, output)
       await watcher.refresh()
@@ -259,8 +286,15 @@ export { resolveFolder, createGit }
  * Read in one place so the file list, branch state, and settings can never
  * disagree with each other on screen.
  */
+/** Paths a tree action applies to: one file, or every file in a section. */
+function pathsOf(node: Node | undefined): string[] {
+  if (!node) return []
+  return node.kind === 'group' ? node.rows.map((row) => row.path) : [node.row.path]
+}
+
 async function refreshSidebar(
   sidebar: SidebarView,
+  tree: ChangesTree,
   summary: RepoSummary | null,
 ): Promise<void> {
   const cwd = resolveFolder()?.uri.fsPath
@@ -276,6 +310,7 @@ async function refreshSidebar(
   }
 
   if (!cwd || !summary) {
+    tree.update(null, null)
     sidebar.update({
       ...base,
       groups: null,
@@ -294,15 +329,19 @@ async function refreshSidebar(
     })
     const branch = await branchInfo(git)
 
+    const groups = toFileGroups(state)
+    tree.update(groups, state.root)
+
     sidebar.update({
       ...base,
-      groups: toFileGroups(state),
+      groups,
       branch,
       syncLabel: describeSync(branch),
       // Worth surfacing: a repo config silently outranks the settings above it.
       hasRepoConfig: loaded.filesRead.some((file) => file.includes('.unbraidrc')),
     })
   } catch {
+    tree.update(null, null)
     sidebar.update({ ...base, groups: null, branch: null, syncLabel: '', hasRepoConfig: false })
   }
 }
