@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Fix the extension icon, which shipped as a blank square. It was rendered from
+  SVG by a converter that silently dropped the paths, so the file was valid and
+  empty.
+
 ## 0.1.0
 
 First release.
