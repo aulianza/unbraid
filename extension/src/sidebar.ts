@@ -11,6 +11,14 @@ export interface SidebarState {
   settings: { granularity: string; hunks: boolean; provider: string }
   /** True when the repo has its own config, which overrides the settings shown. */
   hasRepoConfig: boolean
+  /**
+   * What unbraid is currently doing, or null when idle.
+   *
+   * The progress notification appears in the corner of the window, far from the
+   * button that was pressed — easy to miss entirely, which reads as the click
+   * having done nothing. The button has to react where the user is looking.
+   */
+  busy: string | null
 }
 
 export type SidebarMessage =
@@ -65,6 +73,18 @@ export class SidebarView implements vscode.WebviewViewProvider {
 
   update(state: SidebarState): void {
     this.state = state
+    this.post()
+  }
+
+  /**
+   * Set the working state without waiting for a full refresh.
+   *
+   * Refreshing reads the tree and shells out to git, which is far too slow to
+   * be the thing that acknowledges a click.
+   */
+  setBusy(label: string | null): void {
+    if (!this.state) return
+    this.state = { ...this.state, busy: label }
     this.post()
   }
 

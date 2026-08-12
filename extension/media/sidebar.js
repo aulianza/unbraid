@@ -58,13 +58,29 @@ function renderHead() {
   }
   head.append(branch)
 
-  const preview = el('button', { class: 'wide', type: 'button' }, 'Preview commits')
-  if (!summary || summary.clean) preview.setAttribute('disabled', 'true')
-  else preview.addEventListener('click', () => send({ type: 'createCommits' }))
+  const busy = data.busy
+
+  const preview = el(
+    'button',
+    { class: `wide${busy ? ' busy' : ''}`, type: 'button' },
+    busy ?? 'Preview commits',
+  )
+  if (busy || !summary || summary.clean) preview.setAttribute('disabled', 'true')
+  else {
+    preview.addEventListener('click', () => {
+      // Acknowledge the click immediately. The extension confirms with the real
+      // label a moment later, but the button must not sit inert until then.
+      preview.textContent = 'Reading your changes…'
+      preview.setAttribute('disabled', 'true')
+      preview.classList.add('busy')
+      send({ type: 'createCommits' })
+    })
+  }
   head.append(preview)
 
   const pr = el('button', { class: 'wide secondary', type: 'button' }, 'Draft a pull request')
-  pr.addEventListener('click', () => send({ type: 'draftPr' }))
+  if (busy) pr.setAttribute('disabled', 'true')
+  else pr.addEventListener('click', () => send({ type: 'draftPr' }))
   head.append(pr)
 
   return head

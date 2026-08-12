@@ -83,7 +83,7 @@ export function activate(context: vscode.ExtensionContext): void {
       handleSidebar({ type: 'discard', paths: pathsOf(node) }, output, () => watcher.refresh()),
     ),
     vscode.commands.registerCommand('unbraid.createCommits', async () => {
-      await createCommits(context, output)
+      await createCommits(context, output, sidebar)
       await watcher.refresh()
     }),
     vscode.commands.registerCommand('unbraid.draftPullRequest', () => draftPullRequest()),
@@ -114,6 +114,7 @@ function resolveFolder(): vscode.WorkspaceFolder | undefined {
 async function createCommits(
   context: vscode.ExtensionContext,
   output: vscode.LogOutputChannel,
+  sidebar: SidebarView,
 ): Promise<void> {
   const folder = resolveFolder()
   if (!folder) {
@@ -122,6 +123,7 @@ async function createCommits(
   }
 
   const cwd = folder.uri.fsPath
+  sidebar.setBusy('Reading your changes…')
 
   try {
     const settings = vscode.workspace.getConfiguration('unbraid')
@@ -146,6 +148,7 @@ async function createCommits(
             output.info(
               `${state.files.length} changed · ${provider.name}/${provider.model}`,
             )
+            sidebar.setBusy(`Reading ${state.files.length} files…`)
           },
           beforeModel: async (state, provider) => {
             if (token.isCancellationRequested) return false
@@ -170,14 +173,16 @@ async function createCommits(
           onEvent: (event) => {
             if (token.isCancellationRequested) return
             if (event.type === 'grouping-start') {
-              progress.report({
-                message: event.singlePass
-                  ? `Reading ${event.files} files and writing messages…`
-                  : `Grouping ${event.files} files…`,
-              })
+              const message = event.singlePass
+                ? `Writing commit messages…`
+                : `Grouping ${event.files} files…`
+              progress.report({ message })
+              sidebar.setBusy(message)
             }
             if (event.type === 'grouping-done') {
-              progress.report({ message: `Writing ${event.groups} commit messages…` })
+              const message = `Writing ${event.groups} commit messages…`
+              progress.report({ message })
+              sidebar.setBusy(message)
             }
             if (event.type === 'degraded') {
               output.warn(`Grouping failed: ${event.reason}`)
@@ -187,12 +192,14 @@ async function createCommits(
       },
     )
 
+    sidebar.setBusy('Waiting for your review…')
     const review = await reviewPlan(context, built.plan, built.state)
     if (review.outcome === 'cancel') {
       output.info('Cancelled. Nothing was committed.')
       return
     }
 
+    sidebar.setBusy('Creating commits…')
     const result = await executePlan(built.git, review.plan, {
       verify: config.execute.verify,
       ...(built.hunkContext ? { hunkContext: built.hunkContext } : {}),
@@ -215,6 +222,10 @@ async function createCommits(
     await vscode.commands.executeCommand('git.refresh')
   } catch (error) {
     await reportFailure(error, cwd, output)
+  } finally {
+    // Every path out of here — cancelled, failed, rolled back, or done — has to
+    // release the button, or it stays stuck mid-sweep forever.
+    sidebar.setBusy(null)
   }
 }
 
@@ -302,6 +313,7 @@ async function refreshSidebar(
 
   const base = {
     summary,
+    busy: null,
     settings: {
       granularity: settings.get<string>('granularity', 'semantic'),
       hunks: settings.get<boolean>('hunks', false),

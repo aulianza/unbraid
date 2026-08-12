@@ -188,3 +188,38 @@ li.row:hover .row-actions { display: flex; }
 .field .why { font-size: 0.82em; color: var(--vscode-descriptionForeground); }
 
 .empty { padding: 0 14px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+
+/*
+ * A disabled button and a working button look identical without this, and the
+ * difference is exactly what the user is asking about.
+ */
+button.wide.busy {
+  position: relative;
+  overflow: hidden;
+  opacity: 1;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+button.wide.busy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--vscode-progressBar-background),
+    transparent
+  );
+  opacity: 0.35;
+  animation: sweep 1.4s linear infinite;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.wide.busy::after { animation: none; opacity: 0.2; }
+}
