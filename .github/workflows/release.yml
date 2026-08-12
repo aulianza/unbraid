@@ -2,7 +2,10 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # `v*` also matches `vscode-v0.1.2`, which fired this workflow for an
+    # extension release and only stopped at the tag-versus-package.json check.
+    # Requiring a digit after the v keeps CLI and extension tags apart.
+    tags: ['v[0-9]*']
 
 permissions:
   # Required for npm Trusted Publishing: GitHub mints a short-lived OIDC token
