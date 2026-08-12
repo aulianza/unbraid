@@ -8,14 +8,19 @@ import {
 } from 'unbraid'
 import { readSettings } from './settings.js'
 import { reviewPlan } from './panel.js'
-import { SidebarView } from './sidebar.js'
+import { SidebarView, type SidebarMessage } from './sidebar.js'
 import { RepoWatcher } from './watcher.js'
-import { statusLabel, statusTooltip } from './repo-state.js'
+import { statusLabel, statusTooltip, type RepoSummary } from './repo-state.js'
+import { toFileGroups, untrackedPaths, describeDiscard } from './file-list.js'
+import { gitFor, stage, unstage, discard, branchInfo, pull, pushCurrent, describeSync } from './git-ops.js'
+import { readWorkingTree } from 'unbraid'
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('unbraid', { log: true })
 
-  const sidebar = new SidebarView(context.extensionUri)
+  const sidebar = new SidebarView(context.extensionUri, (message) => {
+    void handleSidebar(message, output, () => watcher.refresh())
+  })
   const status = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     // Just left of the SCM branch indicator, where git information already lives.
@@ -25,8 +30,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const watcher = new RepoWatcher(
     () => resolveFolder()?.uri.fsPath,
-    (summary) => {
-      sidebar.update(summary)
+    async (summary) => {
+      await refreshSidebar(sidebar, summary)
 
       const enabled = vscode.workspace
         .getConfiguration('unbraid')
@@ -247,3 +252,155 @@ function runSetup(cwd?: string): void {
 
 // Re-exported for the smoke test, which has no other way to reach it.
 export { resolveFolder, createGit }
+
+/**
+ * Gather everything the panel shows.
+ *
+ * Read in one place so the file list, branch state, and settings can never
+ * disagree with each other on screen.
+ */
+async function refreshSidebar(
+  sidebar: SidebarView,
+  summary: RepoSummary | null,
+): Promise<void> {
+  const cwd = resolveFolder()?.uri.fsPath
+  const settings = vscode.workspace.getConfiguration('unbraid')
+
+  const base = {
+    summary,
+    settings: {
+      granularity: settings.get<string>('granularity', 'semantic'),
+      hunks: settings.get<boolean>('hunks', false),
+      provider: settings.get<string>('provider', 'auto'),
+    },
+  }
+
+  if (!cwd || !summary) {
+    sidebar.update({
+      ...base,
+      groups: null,
+      branch: null,
+      syncLabel: '',
+      hasRepoConfig: false,
+    })
+    return
+  }
+
+  try {
+    const git = gitFor(cwd)
+    const loaded = await loadConfig({ cwd })
+    const state = await readWorkingTree(git, {
+      expandUntrackedDirsUpTo: loaded.config.grouping.expandUntrackedDirsUpTo,
+    })
+    const branch = await branchInfo(git)
+
+    sidebar.update({
+      ...base,
+      groups: toFileGroups(state),
+      branch,
+      syncLabel: describeSync(branch),
+      // Worth surfacing: a repo config silently outranks the settings above it.
+      hasRepoConfig: loaded.filesRead.some((file) => file.includes('.unbraidrc')),
+    })
+  } catch {
+    sidebar.update({ ...base, groups: null, branch: null, syncLabel: '', hasRepoConfig: false })
+  }
+}
+
+async function handleSidebar(
+  message: SidebarMessage,
+  output: vscode.LogOutputChannel,
+  refresh: () => Promise<void>,
+): Promise<void> {
+  const cwd = resolveFolder()?.uri.fsPath
+
+  switch (message.type) {
+    case 'createCommits':
+      return void vscode.commands.executeCommand('unbraid.createCommits')
+    case 'draftPr':
+      return void vscode.commands.executeCommand('unbraid.draftPullRequest')
+    case 'setup':
+      return void vscode.commands.executeCommand('unbraid.setup')
+
+    case 'setting': {
+      // Global rather than workspace, so a preference follows the user between
+      // projects instead of being set once and forgotten.
+      await vscode.workspace
+        .getConfiguration('unbraid')
+        .update(message.key, message.value, vscode.ConfigurationTarget.Global)
+      return refresh()
+    }
+
+    case 'openFile': {
+      if (!cwd) return
+      const uri = vscode.Uri.joinPath(vscode.Uri.file(cwd), message.path)
+      try {
+        await vscode.commands.executeCommand('git.openChange', uri)
+      } catch {
+        await vscode.window.showTextDocument(uri, { preview: true })
+      }
+      return
+    }
+
+    case 'stage':
+    case 'unstage': {
+      if (!cwd) return
+      try {
+        const git = gitFor(cwd)
+        if (message.type === 'stage') await stage(git, message.paths)
+        else await unstage(git, message.paths)
+      } catch (error) {
+        output.error(String(error))
+        void vscode.window.showErrorMessage(`unbraid: ${describe(error)}`)
+      }
+      return refresh()
+    }
+
+    case 'discard': {
+      if (!cwd || message.paths.length === 0) return
+      const git = gitFor(cwd)
+
+      // The only destructive action in the panel, and the one place unbraid's
+      // usual promise does not hold — so it is the one place that asks.
+      const state = await readWorkingTree(git)
+      const groups = toFileGroups(state)
+      const rows = [...groups.staged, ...groups.changes].filter((row) =>
+        message.paths.includes(row.path),
+      )
+
+      const choice = await vscode.window.showWarningMessage(
+        describeDiscard(rows),
+        { modal: true },
+        'Discard',
+      )
+      if (choice !== 'Discard') return
+
+      try {
+        await discard(git, message.paths, untrackedPaths(groups))
+      } catch (error) {
+        output.error(String(error))
+        void vscode.window.showErrorMessage(`unbraid: ${describe(error)}`)
+      }
+      return refresh()
+    }
+
+    case 'sync': {
+      if (!cwd) return
+      try {
+        const git = gitFor(cwd)
+        const info = await branchInfo(git)
+        if (info.behind > 0) await pull(git)
+        if (info.ahead > 0 || !info.upstream) await pushCurrent(git)
+      } catch (error) {
+        output.error(String(error))
+        void vscode.window.showErrorMessage(`unbraid: ${describe(error)}`)
+      }
+      return refresh()
+    }
+  }
+}
+
+function describe(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.split('\n')[0] ?? message
+}
