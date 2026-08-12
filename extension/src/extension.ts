@@ -14,8 +14,18 @@ import { RepoWatcher } from './watcher.js'
 import { statusLabel, statusTooltip, type RepoSummary } from './repo-state.js'
 import { toFileGroups, untrackedPaths, describeDiscard } from './file-list.js'
 import { ChangesTree, type Node } from './changes-tree.js'
+import { captureBefore, canUndo, describeUndo, performUndo, type UndoRecord } from './undo.js'
+import {
+  recentCommits,
+  listBranchChoices,
+  checkout,
+  createBranch,
+  validateBranchName,
+} from './history.js'
 import { gitFor, stage, unstage, discard, branchInfo, pull, pushCurrent, describeSync } from './git-ops.js'
 import { readWorkingTree } from 'unbraid'
+
+let lastRun: UndoRecord | null = null
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('unbraid', { log: true })
@@ -92,6 +102,15 @@ export function activate(context: vscode.ExtensionContext): void {
       await watcher.refresh()
     }),
     vscode.commands.registerCommand('unbraid.draftPullRequest', () => draftPullRequest()),
+    vscode.commands.registerCommand('unbraid.switchBranch', async () => {
+      await switchBranch(output)
+      await watcher.refresh()
+    }),
+    vscode.commands.registerCommand('unbraid.showHistory', () => showHistory(output)),
+    vscode.commands.registerCommand('unbraid.undo', async () => {
+      await undoLastRun(output)
+      await watcher.refresh()
+    }),
     vscode.commands.registerCommand('unbraid.setup', () => runSetup()),
   )
 
@@ -205,6 +224,7 @@ async function createCommits(
     }
 
     sidebar.setBusy('Creating commits…')
+    const before = await captureBefore(built.git, cwd)
     const result = await executePlan(built.git, review.plan, {
       verify: config.execute.verify,
       ...(built.hunkContext ? { hunkContext: built.hunkContext } : {}),
@@ -220,11 +240,22 @@ async function createCommits(
       return
     }
 
-    void vscode.window.showInformationMessage(
-      `unbraid created ${result.shas.length} commit${result.shas.length === 1 ? '' : 's'}.`,
-    )
+    lastRun = {
+      ...before,
+      afterHead: result.shas[result.shas.length - 1] ?? before.beforeHead ?? '',
+      commits: result.shas.length,
+    }
+
     // Make the Source Control view reflect reality immediately.
     await vscode.commands.executeCommand('git.refresh')
+
+    // Offered here rather than buried in the palette: the moment someone wants
+    // to undo an AI's commits is the moment they see what it did.
+    const choice = await vscode.window.showInformationMessage(
+      `unbraid created ${result.shas.length} commit${result.shas.length === 1 ? '' : 's'}.`,
+      'Undo',
+    )
+    if (choice === 'Undo') await vscode.commands.executeCommand('unbraid.undo')
   } catch (error) {
     await reportFailure(error, cwd, output)
   } finally {
@@ -263,6 +294,39 @@ async function reportFailure(
     'Show output',
   )
   if (choice === 'Show output') output.show()
+}
+
+async function undoLastRun(output: vscode.LogOutputChannel): Promise<void> {
+  const cwd = lastRun?.cwd ?? resolveFolder()?.uri.fsPath
+  if (!cwd) return
+
+  const git = gitFor(cwd)
+  const headResult = await git.runRaw(['rev-parse', 'HEAD'])
+  const head = headResult.code === 0 ? headResult.stdout.trim() : null
+
+  const check = canUndo(lastRun, head)
+  if (!check.ok) {
+    void vscode.window.showWarningMessage(`unbraid: ${check.reason}`)
+    return
+  }
+
+  const record = lastRun!
+  const confirmed = await vscode.window.showWarningMessage(
+    describeUndo(record),
+    { modal: true },
+    'Undo',
+  )
+  if (confirmed !== 'Undo') return
+
+  try {
+    await performUndo(git, record)
+    lastRun = null
+    await vscode.commands.executeCommand('git.refresh')
+    void vscode.window.showInformationMessage('unbraid: those commits were undone.')
+  } catch (error) {
+    output.error(String(error))
+    void vscode.window.showErrorMessage(`unbraid: could not undo — ${describe(error)}`)
+  }
 }
 
 /**
@@ -328,6 +392,15 @@ async function refreshSidebar(
   }
 
   settingsView.update({ ...base.settings, hasRepoConfig: false })
+
+  // Drives the welcome content in the empty tree. Set on every refresh so the
+  // message follows reality rather than whatever was true at activation.
+  void vscode.commands.executeCommand('setContext', 'unbraid.hasRepo', summary !== null)
+  void vscode.commands.executeCommand(
+    'setContext',
+    'unbraid.hasChanges',
+    summary !== null && !summary.clean,
+  )
 
   if (!cwd || !summary) {
     tree.update(null, null)
@@ -461,6 +534,97 @@ async function handleSidebar(
       }
       return refresh()
     }
+  }
+}
+
+/**
+ * Switch branches, or start a new one.
+ *
+ * A QuickPick rather than a panel section: picking from a list is what a
+ * QuickPick is for, it comes with fuzzy search for free, and a branch list can
+ * be hundreds of entries long in a repository of any age.
+ */
+async function switchBranch(output: vscode.LogOutputChannel): Promise<void> {
+  const cwd = resolveFolder()?.uri.fsPath
+  if (!cwd) return
+  const git = gitFor(cwd)
+
+  try {
+    const branches = await listBranchChoices(git)
+    const create = { label: '$(add) Create a new branch…', alwaysShow: true, create: true }
+
+    const items = [
+      create,
+      ...branches.map((branch) => ({
+        label: `${branch.current ? '$(check) ' : '$(git-branch) '}${branch.name}`,
+        description: branch.remote ? 'remote' : branch.current ? 'current' : '',
+        name: branch.name,
+        create: false,
+      })),
+    ]
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Switch to a branch',
+      matchOnDescription: true,
+    })
+    if (!picked) return
+
+    if (picked.create) {
+      const name = await vscode.window.showInputBox({
+        prompt: 'Name for the new branch',
+        // Validated here so the message names the problem, rather than passing
+        // git's own wording about ref format rules to the user.
+        validateInput: validateBranchName,
+      })
+      if (!name) return
+      await createBranch(git, name.trim())
+      void vscode.window.showInformationMessage(`Switched to a new branch ${name.trim()}.`)
+      return
+    }
+
+    const name = (picked as { name?: string }).name
+    if (!name) return
+    await checkout(git, name)
+    void vscode.window.showInformationMessage(`Switched to ${name}.`)
+  } catch (error) {
+    output.error(String(error))
+    void vscode.window.showErrorMessage(`unbraid: ${describe(error)}`)
+  }
+}
+
+/** Recent commits, with the option to open one in the diff viewer. */
+async function showHistory(output: vscode.LogOutputChannel): Promise<void> {
+  const cwd = resolveFolder()?.uri.fsPath
+  if (!cwd) return
+
+  try {
+    const commits = await recentCommits(gitFor(cwd))
+    if (commits.length === 0) {
+      void vscode.window.showInformationMessage('unbraid: no commits on this branch yet.')
+      return
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      commits.map((commit) => ({
+        label: commit.subject,
+        description: commit.short,
+        detail: `${commit.author} · ${commit.when}`,
+        sha: commit.sha,
+      })),
+      { placeHolder: 'Recent commits', matchOnDescription: true, matchOnDetail: true },
+    )
+    if (!picked) return
+
+    // Hand off to the git extension, which already renders a commit properly.
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      vscode.Uri.parse(`git:${cwd}?${picked.sha}~1`),
+      vscode.Uri.parse(`git:${cwd}?${picked.sha}`),
+      picked.label,
+    )
+  } catch (error) {
+    output.error(String(error))
+    void vscode.window.showErrorMessage(`unbraid: ${describe(error)}`)
   }
 }
 

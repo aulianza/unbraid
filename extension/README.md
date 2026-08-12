@@ -37,6 +37,29 @@ Otherwise, run **unbraid: Set up a provider** from the Command Palette. It walks
 the options — Anthropic, OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, or a model running locally
 on your own machine with Ollama — and checks the result works before you walk away.
 
+## Undo
+
+unbraid knows exactly which commits it just made, so it can take them back:
+
+```
+✓ unbraid created 5 commits.        [ Undo ]
+```
+
+Undo resets HEAD and restores the files you had staged, exactly as they were.
+Your working files are never touched at any point, so nothing is lost either way.
+
+It refuses if the branch has moved since — committing, pulling, or rebasing after a run means
+an undo would discard work unbraid never created, and that is the one thing it must not do.
+
+## Also in the panel
+
+| | |
+| --- | --- |
+| `⌘⇧U` / `Ctrl+Shift+U` | Preview commits without reaching for the mouse |
+| Branch switcher | Switch or create a branch, including remote-only ones |
+| Recent commits | Browse the last 15 and open any of them as a diff |
+| Sync | Pull with fast-forward only, then push |
+
 ## Settings
 
 | Setting | Default | What it does |

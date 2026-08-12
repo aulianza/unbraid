@@ -87,6 +87,24 @@
         "title": "Discard all changes",
         "category": "unbraid",
         "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.undo",
+        "title": "Undo the last run",
+        "category": "unbraid",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.switchBranch",
+        "title": "Switch branch",
+        "category": "unbraid",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "unbraid.showHistory",
+        "title": "Show recent commits",
+        "category": "unbraid",
+        "icon": "$(history)"
       }
     ],
     "menus": {
@@ -137,6 +155,18 @@
         {
           "command": "unbraid.discardAll",
           "when": "false"
+        },
+        {
+          "command": "unbraid.undo",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.switchBranch",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.showHistory",
+          "when": "workspaceFolderCount != 0"
         }
       ],
       "view/item/context": [
@@ -169,6 +199,23 @@
           "command": "unbraid.unstageAll",
           "when": "view == unbraid.changes && viewItem == group-staged",
           "group": "inline@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "unbraid.switchBranch",
+          "when": "view == unbraid.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "unbraid.showHistory",
+          "when": "view == unbraid.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "unbraid.undo",
+          "when": "view == unbraid.changes",
+          "group": "navigation@3"
         }
       ]
     },
@@ -240,7 +287,32 @@
           "visibility": "collapsed"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "unbraid.createCommits",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "workspaceFolderCount != 0"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "unbraid.changes",
+        "contents": "Open a folder to get started.\n[Open Folder](command:vscode.openFolder)",
+        "when": "workbenchState == empty"
+      },
+      {
+        "view": "unbraid.changes",
+        "contents": "This folder is not a git repository yet.\nunbraid works with git, so there is nothing to commit until one exists.\n[Initialise Repository](command:git.init)",
+        "when": "workbenchState != empty && !unbraid.hasRepo"
+      },
+      {
+        "view": "unbraid.changes",
+        "contents": "No changes yet.\nEdit some files and they will appear here, ready to be split into commits.\n",
+        "when": "workbenchState != empty && unbraid.hasRepo && !unbraid.hasChanges"
+      }
+    ]
   },
   "scripts": {
     "build": "tsup",
