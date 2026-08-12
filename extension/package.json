@@ -1,0 +1,117 @@
+{
+  "name": "unbraid-vscode",
+  "displayName": "unbraid",
+  "description": "Split a messy working tree into clean, well-described commits.",
+  "version": "0.1.0",
+  "publisher": "aulianza",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aulianza/unbraid.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/aulianza/unbraid",
+  "icon": "media/icon.png",
+  "categories": [
+    "SCM Providers",
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "ai",
+    "conventional-commits",
+    "source control"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "unbraid.createCommits",
+        "title": "Create commits with unbraid",
+        "category": "unbraid",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "unbraid.setup",
+        "title": "Set up a provider",
+        "category": "unbraid"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "unbraid.createCommits",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "unbraid.createCommits",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.setup",
+          "when": "workspaceFolderCount != 0"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "unbraid",
+      "properties": {
+        "unbraid.granularity": {
+          "type": "string",
+          "enum": [
+            "fine",
+            "semantic",
+            "coarse"
+          ],
+          "enumDescriptions": [
+            "Roughly one commit per file",
+            "One commit per feature or fix",
+            "Few, large commits grouped by concern"
+          ],
+          "default": "semantic",
+          "markdownDescription": "How big each commit should be. A repository's own `.unbraidrc.yaml` overrides this."
+        },
+        "unbraid.hunks": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Allow a single file's changes to be split across commits when it mixes unrelated work."
+        },
+        "unbraid.provider": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "claude-cli",
+            "anthropic",
+            "openai-compatible"
+          ],
+          "default": "auto",
+          "markdownDescription": "Which AI writes the messages. `auto` prefers an installed Claude Code, which is free with an existing subscription."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "watch": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "unbraid": "file:.."
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

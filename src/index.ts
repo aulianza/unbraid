@@ -43,4 +43,14 @@ export { createAnthropicProvider } from './core/providers/anthropic.js'
 export { createOpenAiCompatibleProvider } from './core/providers/openai-compatible.js'
 
 export { buildPlan } from './cli/pipeline.js'
+
+/**
+ * The review-screen reducer.
+ *
+ * Pure and already covered by tests, so any front end — the terminal UI, the
+ * VS Code panel — can drive the same merge, reorder, rename, and remove
+ * behaviour instead of reimplementing it and drifting.
+ */
+export { reduce, initialState } from './cli/ui/reducer.js'
+export type { EditorState, EditorAction } from './cli/ui/reducer.js'
 export { checkSecrets } from './cli/guard.js'

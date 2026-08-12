@@ -14,7 +14,8 @@ export default defineConfig({
   target: 'node20',
   platform: 'node',
   clean: true,
-  dts: false,
+  // Emitted so the VS Code extension can compile against the library.
+  dts: { entry: 'src/index.ts' },
   sourcemap: false,
   // Dependencies stay external. Bundling them into ESM was tried and reverted:
   // yaml's CJS build calls require('process'), which esbuild turns into a
