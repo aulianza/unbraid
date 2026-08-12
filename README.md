@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.svg" alt="" width="76" height="76">
+
 # unbraid
 
 **Turn a messy pile of changes into clean, well-described commits — automatically.**

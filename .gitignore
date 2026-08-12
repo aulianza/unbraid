@@ -20,3 +20,7 @@ plan.json
 
 # private working notes — not for publication
 docs/superpowers/
+
+# agent tooling, not part of the package
+.agents/
+skills-lock.json

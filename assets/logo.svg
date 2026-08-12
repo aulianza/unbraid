@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="unbraid">
+  <title>unbraid</title>
+  <!--
+    One strand in, three out: a tangled changeset becoming several clean commits.
+
+    Stroked in a single indigo that holds contrast on both a white page and
+    GitHub's dark ground, so one file serves every theme. A currentColor variant
+    lives in logo-mono.svg for places that can pass a colour down; an <img> tag
+    cannot, which is why this file names its colour outright.
+  -->
+  <g fill="none" stroke="#6366F1" stroke-width="4" stroke-linecap="round">
+    <path d="M6 32L58 32"/>
+    <path d="M24 32C34 32 34 17 44 17L58 17"/>
+    <path d="M24 32C34 32 34 47 44 47L58 47"/>
+  </g>
+</svg>

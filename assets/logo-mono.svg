@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="unbraid">
+  <title>unbraid</title>
+  <!--
+    Monochrome variant: inherits the surrounding text colour.
+
+    Use this when the SVG is inlined into a document or a page that can pass a
+    colour down. It renders black in an <img> tag, where nothing can — see
+    logo.svg for that case.
+  -->
+  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+    <path d="M6 32L58 32"/>
+    <path d="M24 32C34 32 34 17 44 17L58 17"/>
+    <path d="M24 32C34 32 34 47 44 47L58 47"/>
+  </g>
+</svg>
