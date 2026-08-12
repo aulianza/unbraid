@@ -1,0 +1,11 @@
+# Source and tooling — the bundle in dist/ is what ships.
+src/**
+node_modules/**
+!media/codicon/**
+tsconfig.json
+tsup.config.ts
+.vscode/**
+**/*.test.ts
+!LICENSE
+!CHANGELOG.md
+**/*.map

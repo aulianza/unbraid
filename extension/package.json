@@ -1,0 +1,333 @@
+{
+  "name": "unbraid-vscode",
+  "displayName": "unbraid",
+  "description": "Split a messy working tree into clean, well-described commits.",
+  "version": "0.1.0",
+  "publisher": "aulianza",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aulianza/unbraid.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/aulianza/unbraid",
+  "icon": "media/icon.png",
+  "categories": [
+    "SCM Providers",
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "ai",
+    "conventional-commits",
+    "source control"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "unbraid.createCommits",
+        "title": "Preview commits",
+        "category": "unbraid",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "unbraid.setup",
+        "title": "Set up a provider",
+        "category": "unbraid"
+      },
+      {
+        "command": "unbraid.draftPullRequest",
+        "title": "Draft a pull request",
+        "category": "unbraid"
+      },
+      {
+        "command": "unbraid.openChange",
+        "title": "Open change",
+        "category": "unbraid"
+      },
+      {
+        "command": "unbraid.stageFile",
+        "title": "Stage",
+        "category": "unbraid",
+        "icon": "$(add)"
+      },
+      {
+        "command": "unbraid.unstageFile",
+        "title": "Unstage",
+        "category": "unbraid",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "unbraid.discardFile",
+        "title": "Discard changes",
+        "category": "unbraid",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.stageAll",
+        "title": "Stage all",
+        "category": "unbraid",
+        "icon": "$(add)"
+      },
+      {
+        "command": "unbraid.unstageAll",
+        "title": "Unstage all",
+        "category": "unbraid",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "unbraid.discardAll",
+        "title": "Discard all changes",
+        "category": "unbraid",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.undo",
+        "title": "Undo the last run",
+        "category": "unbraid",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "unbraid.switchBranch",
+        "title": "Switch branch",
+        "category": "unbraid",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "unbraid.showHistory",
+        "title": "Show recent commits",
+        "category": "unbraid",
+        "icon": "$(history)"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "unbraid.createCommits",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "unbraid.createCommits",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.setup",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.draftPullRequest",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.openChange",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.stageFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.unstageFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.discardFile",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.unstageAll",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.discardAll",
+          "when": "false"
+        },
+        {
+          "command": "unbraid.undo",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.switchBranch",
+          "when": "workspaceFolderCount != 0"
+        },
+        {
+          "command": "unbraid.showHistory",
+          "when": "workspaceFolderCount != 0"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "unbraid.stageFile",
+          "when": "view == unbraid.changes && viewItem == unstaged-file",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.discardFile",
+          "when": "view == unbraid.changes && viewItem == unstaged-file",
+          "group": "inline@2"
+        },
+        {
+          "command": "unbraid.unstageFile",
+          "when": "view == unbraid.changes && viewItem == staged-file",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.stageAll",
+          "when": "view == unbraid.changes && viewItem == group-changes",
+          "group": "inline@1"
+        },
+        {
+          "command": "unbraid.discardAll",
+          "when": "view == unbraid.changes && viewItem == group-changes",
+          "group": "inline@2"
+        },
+        {
+          "command": "unbraid.unstageAll",
+          "when": "view == unbraid.changes && viewItem == group-staged",
+          "group": "inline@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "unbraid.switchBranch",
+          "when": "view == unbraid.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "unbraid.showHistory",
+          "when": "view == unbraid.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "unbraid.undo",
+          "when": "view == unbraid.changes",
+          "group": "navigation@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "unbraid",
+      "properties": {
+        "unbraid.granularity": {
+          "type": "string",
+          "enum": [
+            "fine",
+            "semantic",
+            "coarse"
+          ],
+          "enumDescriptions": [
+            "Roughly one commit per file",
+            "One commit per feature or fix",
+            "Few, large commits grouped by concern"
+          ],
+          "default": "semantic",
+          "markdownDescription": "How big each commit should be. A repository's own `.unbraidrc.yaml` overrides this."
+        },
+        "unbraid.hunks": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Allow a single file's changes to be split across commits when it mixes unrelated work."
+        },
+        "unbraid.provider": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "claude-cli",
+            "anthropic",
+            "openai-compatible"
+          ],
+          "default": "auto",
+          "markdownDescription": "Which AI writes the messages. `auto` prefers an installed Claude Code, which is free with an existing subscription."
+        },
+        "unbraid.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a status bar item with the number of uncommitted files."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "unbraid",
+          "title": "unbraid",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "unbraid": [
+        {
+          "id": "unbraid.sidebar",
+          "name": "unbraid",
+          "type": "webview"
+        },
+        {
+          "id": "unbraid.changes",
+          "name": "Changes"
+        },
+        {
+          "id": "unbraid.settings",
+          "name": "Settings",
+          "type": "webview",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "unbraid.createCommits",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "workspaceFolderCount != 0"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "unbraid.changes",
+        "contents": "Open a folder to get started.\n[Open Folder](command:vscode.openFolder)",
+        "when": "workbenchState == empty"
+      },
+      {
+        "view": "unbraid.changes",
+        "contents": "This folder is not a git repository yet.\nunbraid works with git, so there is nothing to commit until one exists.\n[Initialise Repository](command:git.init)",
+        "when": "workbenchState != empty && !unbraid.hasRepo"
+      },
+      {
+        "view": "unbraid.changes",
+        "contents": "No changes yet.\nEdit some files and they will appear here, ready to be split into commits.\n",
+        "when": "workbenchState != empty && unbraid.hasRepo && !unbraid.hasChanges"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsup",
+    "watch": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "unbraid": "file:.."
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^3.2.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

@@ -19,6 +19,15 @@
   "license": "MIT",
   "author": "aulianza (https://aulianza.com)",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -52,5 +61,8 @@
     "react": "^19.2.8",
     "yaml": "^2.9.0",
     "zod": "^3.25.76"
-  }
+  },
+  "workspaces": [
+    "extension"
+  ]
 }
