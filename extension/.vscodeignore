@@ -6,4 +6,6 @@ tsconfig.json
 tsup.config.ts
 .vscode/**
 **/*.test.ts
+!LICENSE
+!CHANGELOG.md
 **/*.map
