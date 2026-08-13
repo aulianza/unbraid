@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { width: 1280px; height: 640px; }
+
+  body {
+    background: #0F1117;
+    color: #E8EAF0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+    display: grid;
+    grid-template-columns: 1fr 530px;
+    align-items: center;
+    gap: 48px;
+    padding: 60px 68px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* A wash behind the mark, so the ground is not flat black. */
+  body::before {
+    content: '';
+    position: absolute;
+    right: -140px;
+    top: -180px;
+    width: 720px;
+    height: 720px;
+    background: radial-gradient(circle, rgba(99,102,241,0.16), transparent 62%);
+  }
+
+  .left { position: relative; display: flex; flex-direction: column; gap: 22px; }
+
+  .brand { display: flex; align-items: center; gap: 18px; }
+
+  .wordmark {
+    font-size: 62px;
+    font-weight: 700;
+    letter-spacing: -0.045em;
+  }
+
+  h1 {
+    font-size: 44px;
+    font-weight: 600;
+    line-height: 1.24;
+    letter-spacing: -0.025em;
+    max-width: 19ch;
+  }
+
+  h1 em { font-style: normal; color: #8B8CF5; }
+
+  .sub {
+    font-size: 21px;
+    line-height: 1.5;
+    color: #9BA1B4;
+    max-width: 32ch;
+  }
+
+  .install {
+    margin-top: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 20px;
+    color: #C7CBD8;
+    background: #171A23;
+    border: 1px solid #262A36;
+    border-radius: 8px;
+    padding: 12px 18px;
+    width: fit-content;
+  }
+
+  .install .prompt { color: #5B6070; }
+
+  /* Fills the lower left, and answers the two questions anyone has on sight:
+     where does it run, and what does it cost. */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+
+  .chips span {
+    font-size: 15px;
+    color: #8990A3;
+    border: 1px solid #262A36;
+    border-radius: 999px;
+    padding: 5px 13px;
+  }
+
+  /* ── the demo panel ─────────────────────────────────────────── */
+
+  .panel {
+    position: relative;
+    background: #12141C;
+    border: 1px solid #242836;
+    border-radius: 14px;
+    padding: 24px 24px 26px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 16.5px;
+    line-height: 1.95;
+  }
+
+  .before { color: #6E7488; font-size: 15.5px; }
+  .after { color: #6E7488; font-size: 15.5px; margin-bottom: 6px; }
+  .label {
+    display: inline-block;
+    min-width: 52px;
+    color: #4E5468;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 12.5px;
+  }
+  .before .count { color: #9BA1B4; }
+
+  .rule {
+    height: 1px;
+    background: #242836;
+    margin: 18px 0 16px;
+  }
+
+  .row { display: flex; gap: 12px; white-space: nowrap; }
+  .num { color: #4E5468; }
+  .type { color: #8B8CF5; }
+  .msg { color: #D5D9E4; }
+  .files { color: #5B6070; margin-left: auto; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand">
+      <svg width="66" height="66" viewBox="0 0 64 64" fill="none"
+           stroke="#7C7CF0" stroke-width="4.5" stroke-linecap="round">
+        <path d="M6 32L58 32"/>
+        <path d="M24 32C34 32 34 17 44 17L58 17"/>
+        <path d="M24 32C34 32 34 47 44 47L58 47"/>
+      </svg>
+      <span class="wordmark">unbraid</span>
+    </div>
+
+    <h1>52 changed files become <em>6 real commits</em></h1>
+
+    <p class="sub">
+      AI that does the staging, not just the message. Review the plan before
+      anything is written.
+    </p>
+
+    <div class="install"><span class="prompt">$</span> npx unbraid</div>
+
+    <div class="chips">
+      <span>CLI</span>
+      <span>VS Code</span>
+      <span>free with Claude Code</span>
+      <span>or runs offline</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="before"><span class="label">before</span> 52 files <span class="count">→ one commit, “updates”</span></div>
+    <div class="rule"></div>
+    <div class="after"><span class="label">after</span></div>
+
+    <div class="row"><span class="num">1</span><span class="type">feat(auth):</span><span class="msg">refresh token rotation</span><span class="files">4</span></div>
+    <div class="row"><span class="num">2</span><span class="type">fix(api):</span><span class="msg">handle null user</span><span class="files">2</span></div>
+    <div class="row"><span class="num">3</span><span class="type">chore(deps):</span><span class="msg">bump next to 15.2</span><span class="files">1</span></div>
+    <div class="row"><span class="num">4</span><span class="type">refactor(ui):</span><span class="msg">extract Button variants</span><span class="files">7</span></div>
+    <div class="row"><span class="num">5</span><span class="type">test(auth):</span><span class="msg">cover expired token</span><span class="files">3</span></div>
+    <div class="row"><span class="num">6</span><span class="type">chore:</span><span class="msg">update lockfile</span><span class="files">1</span></div>
+  </div>
+</body>
+</html>
