@@ -7,13 +7,14 @@
 **Turn a messy pile of changes into clean, well-described commits — automatically.**
 
 [![CI](https://github.com/aulianza/unbraid/actions/workflows/ci.yml/badge.svg)](https://github.com/aulianza/unbraid/actions/workflows/ci.yml)
-[![Open VSX](https://img.shields.io/open-vsx/v/aulianza/unbraid-vscode?label=vs%20code&color=3178c6)](https://open-vsx.org/extension/aulianza/unbraid-vscode)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/aulianza.unbraid-vscode?label=vs%20code&color=3178c6)](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)
+[![Open VSX](https://img.shields.io/open-vsx/v/aulianza/unbraid-vscode?label=open%20vsx&color=a60ee5)](https://open-vsx.org/extension/aulianza/unbraid-vscode)
 [![npm version](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
 [![npm downloads](https://img.shields.io/npm/dm/unbraid?color=cb3837)](https://www.npmjs.com/package/unbraid)
 [![node](https://img.shields.io/node/v/unbraid)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**[npm](https://www.npmjs.com/package/unbraid)** · **[VS Code extension](https://open-vsx.org/extension/aulianza/unbraid-vscode)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
+**[npm](https://www.npmjs.com/package/unbraid)** · **[VS Code extension](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
 
 </div>
 
@@ -72,25 +73,16 @@ Two ways to use it. They share the same engine, so pick whichever fits how you w
 
 ### In your editor
 
-**[unbraid for VS Code](https://open-vsx.org/extension/aulianza/unbraid-vscode)** — an icon in
-the activity bar with your changed files, a review panel, and one-click undo.
+**[unbraid for VS Code](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)** — an icon in the activity bar with your changed files, a
+review panel, and one-click undo.
 
-**Cursor, Windsurf, VSCodium, or Gitpod** — these read Open VSX, so search **unbraid** in the
-Extensions panel, or:
+Search **unbraid** in the Extensions panel, or:
 
 ```bash
 code --install-extension aulianza.unbraid-vscode
 ```
 
-**VS Code itself** reads only Microsoft's Marketplace, where unbraid is not published yet, so
-install the file directly. Download the latest `.vsix` from
-[releases](https://github.com/aulianza/unbraid/releases), then:
-
-```bash
-code --install-extension ~/Downloads/unbraid-vscode-0.1.2.vsix
-```
-
-Or in the Extensions panel: `…` menu → **Install from VSIX**.
+Works in VS Code, Cursor, Windsurf, VSCodium, and Gitpod.
 
 ### In your terminal
 
@@ -639,7 +631,8 @@ extension gives you the same thing with a panel of its own:
 - **Undo the last run**, which puts HEAD and your staging back exactly as they were
 - `⌘⇧U` / `Ctrl+Shift+U` to start
 
-[Install it from Open VSX](https://open-vsx.org/extension/aulianza/unbraid-vscode) ·
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode) ·
+[Open VSX](https://open-vsx.org/extension/aulianza/unbraid-vscode) ·
 [source](extension/)
 
 ## Status

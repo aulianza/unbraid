@@ -80,6 +80,15 @@ through, every commit it made is undone and your staging is restored exactly as 
 others. unbraid checks every file the model mentions against your real changes — invented ones
 are dropped, duplicates removed, and anything forgotten is shown to you rather than skipped.
 
+## Available everywhere
+
+Published to both registries, so it installs the same way in VS Code, Cursor, Windsurf,
+VSCodium, and Gitpod:
+
+```bash
+code --install-extension aulianza.unbraid-vscode
+```
+
 ## Also available as a CLI
 
 Same engine, same behaviour:
