@@ -142,6 +142,19 @@ export async function createPrDraft(
 }
 
 /**
+ * Turn a literal backslash-n into a real line break.
+ *
+ * Models double-escape newlines in JSON string fields often enough to matter:
+ * the value arrives as the two characters `\` and `n`, which markdown renders
+ * verbatim. Numbered testing steps come back as one long line reading
+ * "1. Run the tests.\n2. Run init." Nothing in a pull request body wants a
+ * literal backslash-n, so the substitution is safe.
+ */
+function unescapeNewlines(text: string): string {
+  return text.replace(/\\r\\n|\\n/g, '\n')
+}
+
+/**
  * Enforce the length caps in code.
  *
  * Schema `maxItems` and a prompt asking for brevity both help, and neither is a
@@ -150,9 +163,10 @@ export async function createPrDraft(
 export function trimResponse(response: PrResponse): PrResponse {
   return {
     ...response,
-    summary: truncate(response.summary.trim(), MAX_SUMMARY_LENGTH),
+    testing: unescapeNewlines(response.testing).trim(),
+    summary: truncate(unescapeNewlines(response.summary).trim(), MAX_SUMMARY_LENGTH),
     changes: response.changes
-      .map((change) => truncate(change.trim(), MAX_CHANGE_LENGTH))
+      .map((change) => truncate(unescapeNewlines(change).trim(), MAX_CHANGE_LENGTH))
       .filter((change) => change.length > 0)
       .slice(0, MAX_CHANGES),
   }

@@ -134,6 +134,39 @@ describe('length caps', () => {
   })
 })
 
+// Seen in real output: numbered testing steps arrive as one line containing
+// the two characters \ and n, which markdown renders verbatim.
+describe('double-escaped newlines', () => {
+  it('turns a literal backslash-n into a line break', () => {
+    const trimmed = trimResponse({
+      ...response,
+      testing: '1. Run the tests.\\n2. Run `unbraid init`.',
+    })
+
+    expect(trimmed.testing).toBe('1. Run the tests.\n2. Run `unbraid init`.')
+    expect(trimmed.testing).not.toContain('\\n')
+  })
+
+  it('handles the carriage-return form too', () => {
+    expect(trimResponse({ ...response, testing: 'a\\r\\nb' }).testing).toBe('a\nb')
+  })
+
+  it('leaves real newlines untouched', () => {
+    expect(trimResponse({ ...response, testing: 'a\nb' }).testing).toBe('a\nb')
+  })
+
+  it('reaches the summary and the bullets, not only the testing steps', () => {
+    const trimmed = trimResponse({
+      ...response,
+      summary: 'One thing.\\nAnother.',
+      changes: ['first\\nsecond'],
+    })
+
+    expect(trimmed.summary).toBe('One thing.\nAnother.')
+    expect(trimmed.changes[0]).toBe('first\nsecond')
+  })
+})
+
 describe('createPrDraft', () => {
   it('renders a title and a structured body', async () => {
     const draft = await createPrDraft(summary, defaultConfig(), stubProvider(response))
