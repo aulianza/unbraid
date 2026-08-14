@@ -166,10 +166,21 @@ describe('isLocalUrl', () => {
 })
 
 describe('resolveProvider', () => {
+  /*
+   * Stub every detector, always. These tests previously stubbed only claude,
+   * so adding the codex detector made them resolve differently depending on
+   * whether codex happened to be installed on the machine running them.
+   */
+  const nothingInstalled = {
+    claudeAvailable: async () => false,
+    codexAvailable: async () => false,
+  }
+
   it('prefers the Claude CLI when it is installed', async () => {
     const provider = await resolveProvider(defaultConfig(), {
       env: { ANTHROPIC_API_KEY: 'k' },
       claudeAvailable: async () => true,
+      codexAvailable: async () => false,
     })
     expect(provider.name).toBe('claude-cli')
   })
@@ -177,7 +188,7 @@ describe('resolveProvider', () => {
   it('falls back to an Anthropic key when the CLI is absent', async () => {
     const provider = await resolveProvider(defaultConfig(), {
       env: { ANTHROPIC_API_KEY: 'k' },
-      claudeAvailable: async () => false,
+      ...nothingInstalled,
     })
     expect(provider.name).toBe('anthropic')
   })
@@ -185,18 +196,18 @@ describe('resolveProvider', () => {
   it('falls back to an OpenAI-compatible key last', async () => {
     const provider = await resolveProvider(defaultConfig(), {
       env: { OPENAI_API_KEY: 'k' },
-      claudeAvailable: async () => false,
+      ...nothingInstalled,
     })
     expect(provider.name).toBe('openai-compatible')
   })
 
   it('explains how to fix things when nothing is configured', async () => {
     await expect(
-      resolveProvider(defaultConfig(), { env: {}, claudeAvailable: async () => false }),
+      resolveProvider(defaultConfig(), { env: {}, ...nothingInstalled }),
     ).rejects.toBeInstanceOf(NoProviderError)
 
     await expect(
-      resolveProvider(defaultConfig(), { env: {}, claudeAvailable: async () => false }),
+      resolveProvider(defaultConfig(), { env: {}, ...nothingInstalled }),
     ).rejects.toThrow(/claude\.com\/claude-code/)
   })
 

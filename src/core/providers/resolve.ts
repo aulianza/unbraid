@@ -1,6 +1,7 @@
 import type { Config } from '../config/schema.js'
 import type { Provider } from './types.js'
 import { createClaudeCliProvider, isClaudeCliAvailable } from './claude-cli.js'
+import { createCodexCliProvider, isCodexCliAvailable } from './codex-cli.js'
 import { createAnthropicProvider } from './anthropic.js'
 import { createOpenAiCompatibleProvider } from './openai-compatible.js'
 
@@ -8,6 +9,7 @@ export interface ResolveOptions {
   env?: NodeJS.ProcessEnv
   /** Injected in tests so resolution does not depend on what is installed. */
   claudeAvailable?: (bin: string) => Promise<boolean>
+  codexAvailable?: (bin: string) => Promise<boolean>
 }
 
 export class NoProviderError extends Error {
@@ -31,6 +33,7 @@ export async function resolveProvider(
 ): Promise<Provider> {
   const env = options.env ?? process.env
   const checkClaude = options.claudeAvailable ?? isClaudeCliAvailable
+  const checkCodex = options.codexAvailable ?? isCodexCliAvailable
   const providers = config.providers
 
   const claudeBin = providers['claude-cli'].bin
@@ -42,6 +45,14 @@ export async function resolveProvider(
       bin: claudeBin,
       model: config.model === 'auto' ? 'auto' : config.model,
       extraArgs: providers['claude-cli'].extraArgs,
+    })
+
+  const buildCodex = () =>
+    createCodexCliProvider({
+      bin: providers['codex-cli'].bin,
+      model:
+        config.model === 'auto' ? providers['codex-cli'].model : config.model,
+      extraArgs: providers['codex-cli'].extraArgs,
     })
 
   const buildAnthropic = (key: string) =>
@@ -64,6 +75,9 @@ export async function resolveProvider(
     case 'claude-cli':
       return buildClaude()
 
+    case 'codex-cli':
+      return buildCodex()
+
     case 'anthropic':
       if (!anthropicKey) {
         throw new NoProviderError(
@@ -76,7 +90,10 @@ export async function resolveProvider(
       return buildOpenAi(openAiKey)
 
     case 'auto': {
+      // Subscription-backed CLIs first: they cost the user nothing beyond what
+      // they already pay for, and need no key to be configured.
       if (await checkClaude(claudeBin)) return buildClaude()
+      if (await checkCodex(providers['codex-cli'].bin)) return buildCodex()
       if (anthropicKey) return buildAnthropic(anthropicKey)
       if (openAiKey) return buildOpenAi(openAiKey)
 
@@ -84,8 +101,10 @@ export async function resolveProvider(
         [
           'No AI provider available. Pick one of:',
           '',
-          '  1. Install Claude Code and sign in — free with an existing subscription:',
+          '  1. Install Claude Code or the Codex CLI and sign in — free with an',
+          '     existing subscription:',
           '       https://claude.com/claude-code',
+          '       https://developers.openai.com/codex/cli',
           `  2. export ${providers.anthropic.apiKeyEnv}=...`,
           `  3. export ${providers['openai-compatible'].apiKeyEnv}=... (works with OpenAI, OpenRouter, Groq, Ollama)`,
           '',
