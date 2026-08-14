@@ -11,6 +11,7 @@ import { z } from 'zod'
 export const providerNameSchema = z.enum([
   'auto',
   'claude-cli',
+  'codex-cli',
   'anthropic',
   'openai-compatible',
 ])
@@ -43,6 +44,14 @@ export const configSchema = z.object({
       'claude-cli': z
         .object({
           bin: z.string().default('claude'),
+          extraArgs: z.array(z.string()).default([]),
+        })
+        .default({}),
+      'codex-cli': z
+        .object({
+          bin: z.string().default('codex'),
+          /** Passed to `-m`. 'auto' leaves codex to pick its own default. */
+          model: z.string().default('auto'),
           extraArgs: z.array(z.string()).default([]),
         })
         .default({}),
