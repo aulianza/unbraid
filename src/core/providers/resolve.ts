@@ -1,4 +1,5 @@
 import type { Config } from '../config/schema.js'
+import { readCredentials, lookupKey, type Credentials } from '../config/credentials.js'
 import type { Provider } from './types.js'
 import { createClaudeCliProvider, isClaudeCliAvailable } from './claude-cli.js'
 import { createCodexCliProvider, isCodexCliAvailable } from './codex-cli.js'
@@ -10,6 +11,8 @@ export interface ResolveOptions {
   /** Injected in tests so resolution does not depend on what is installed. */
   claudeAvailable?: (bin: string) => Promise<boolean>
   codexAvailable?: (bin: string) => Promise<boolean>
+  /** Injected in tests; read from disk otherwise. */
+  credentials?: Credentials
 }
 
 export class NoProviderError extends Error {
@@ -32,13 +35,20 @@ export async function resolveProvider(
   options: ResolveOptions = {},
 ): Promise<Provider> {
   const env = options.env ?? process.env
+  // Keys saved by `unbraid init` live outside any repository; the environment
+  // still wins, so an exported key keeps overriding a stored one.
+  const credentials = options.credentials ?? (await readCredentials())
   const checkClaude = options.claudeAvailable ?? isClaudeCliAvailable
   const checkCodex = options.codexAvailable ?? isCodexCliAvailable
   const providers = config.providers
 
   const claudeBin = providers['claude-cli'].bin
-  const anthropicKey = env[providers.anthropic.apiKeyEnv]
-  const openAiKey = env[providers['openai-compatible'].apiKeyEnv]
+  const anthropicKey = lookupKey(providers.anthropic.apiKeyEnv, env, credentials)
+  const openAiKey = lookupKey(
+    providers['openai-compatible'].apiKeyEnv,
+    env,
+    credentials,
+  )
 
   const buildClaude = () =>
     createClaudeCliProvider({
@@ -105,8 +115,8 @@ export async function resolveProvider(
           '     existing subscription:',
           '       https://claude.com/claude-code',
           '       https://developers.openai.com/codex/cli',
-          `  2. export ${providers.anthropic.apiKeyEnv}=...`,
-          `  3. export ${providers['openai-compatible'].apiKeyEnv}=... (works with OpenAI, OpenRouter, Groq, Ollama)`,
+          '  2. Run `unbraid init` and paste an API key when asked.',
+          `  3. Or export ${providers.anthropic.apiKeyEnv} or ${providers['openai-compatible'].apiKeyEnv} yourself.`,
           '',
           'Then re-run unbraid.',
         ].join('\n'),
