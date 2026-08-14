@@ -16,7 +16,7 @@ import { createPrDraft } from '../core/engine/pr.js'
 import { ensurePushed, openWebPr, editDraft, assertWebSupported } from './pr-flow.js'
 import { resolveProvider } from '../core/providers/resolve.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
-import type { Config } from '../core/config/schema.js'
+import { providerNameSchema, type Config } from '../core/config/schema.js'
 
 /** Replaced at build time by tsup; see tsup.config.ts. */
 declare const __UNBRAID_VERSION__: string
@@ -85,7 +85,9 @@ function flagsToConfig(flags: CommonFlags & { push?: boolean }): Record<string, 
 /** Options every command that talks to a model needs. */
 function addProviderOptions(command: Command): Command {
   return command
-    .option('-p, --provider <name>', 'auto | claude-cli | anthropic | openai-compatible')
+    // Listed from the schema rather than written out, so adding a provider
+    // cannot leave `--help` advertising the old set.
+    .option('-p, --provider <name>', providerNameSchema.options.join(' | '))
     .option('-m, --model <model>', 'model id or alias')
 }
 

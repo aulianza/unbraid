@@ -4,17 +4,15 @@
 
 # unbraid
 
-**Turn a messy pile of changes into clean, well-described commits — automatically.**
+### Turn a messy pile of changes into clean, well-described commits.
 
 [![CI](https://github.com/aulianza/unbraid/actions/workflows/ci.yml/badge.svg)](https://github.com/aulianza/unbraid/actions/workflows/ci.yml)
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/aulianza.unbraid-vscode?label=vs%20code&color=3178c6)](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)
 [![Open VSX](https://img.shields.io/open-vsx/v/aulianza/unbraid-vscode?label=open%20vsx&color=a60ee5)](https://open-vsx.org/extension/aulianza/unbraid-vscode)
-[![npm version](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
-[![npm downloads](https://img.shields.io/npm/dm/unbraid?color=cb3837)](https://www.npmjs.com/package/unbraid)
-[![node](https://img.shields.io/node/v/unbraid)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/unbraid?color=cb3837&logo=npm)](https://www.npmjs.com/package/unbraid)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**[npm](https://www.npmjs.com/package/unbraid)** · **[VS Code extension](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)**
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Providers](#providers)** · **[Configuration](#configuration)** · **[VS Code](#in-your-editor)**
 
 </div>
 
@@ -22,29 +20,23 @@
 
 ## The problem
 
-You've been coding for a few hours. You fixed a bug, added a feature, tweaked some styling,
-and updated a dependency. Now `git status` shows **52 changed files** and you have two bad
-options.
+You've been in the zone for three hours. Auth got fixed, a feature landed, some styling
+changed, a dependency moved. It all works.
 
-**Option A — commit it all at once.** Fast, and you end up with:
+Then `git status` prints 52 files and the momentum dies. Sorting that pile into commits that
+say something takes half an hour of `git add` and message-writing — so you do the honest thing:
 
 ```
 * 4f2a1c9  update stuff
 ```
 
-Six months later you need to undo just the styling change. You can't, because it's welded to
-the bug fix and the feature.
+The work was good. The record of it is useless — to your reviewer, to your teammate, and to
+you next month.
 
-**Option B — sort it out by hand.** Add the auth files, write a message, commit. Add the API
-files, write a message, commit. Repeat eight times. Good history, **thirty minutes**. So most
-days you do Option A instead.
-
-`unbraid` is a third option.
+**unbraid does the sorting.** It reads every change, works out what belongs with what, writes
+a real message for each group, and shows you the plan before touching anything.
 
 ## What it does
-
-Run one command. It reads all your changes, works out which ones belong together, writes a
-proper message for each group, and shows you the plan before touching anything.
 
 ```console
 $ unbraid
@@ -62,144 +54,143 @@ $ unbraid
   ↑↓ move · space files · e edit · m merge · d remove · c commit · q quit
 ```
 
-Press `c` and you get six commits instead of one. The whole thing takes about a minute.
+One command, about a minute, six commits a reviewer can actually read.
 
 > **New to some of these words?** *Staging*, *hunk*, *conventional commits* — there's a
-> plain-English [glossary](#glossary) at the bottom. You don't need to read it first.
+> plain-English [glossary](#glossary) at the bottom. You don't need it to start.
+
+---
 
 ## Install
 
-Two ways to use it. They share the same engine, so pick whichever fits how you work.
-
 ### In your editor
 
-**[unbraid for VS Code](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)** — an icon in the activity bar with your changed files, a
-review panel, and one-click undo.
-
-Search **unbraid** in the Extensions panel, or:
+**[unbraid for VS Code](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode)**
+— your changed files, a review panel, and one-click undo, in a panel of its own.
 
 ```bash
 code --install-extension aulianza.unbraid-vscode
 ```
 
-Works in VS Code, Cursor, Windsurf, VSCodium, and Gitpod.
+Or search **unbraid** in the Extensions panel. Works in VS Code, Cursor, Windsurf, VSCodium,
+and Gitpod.
 
 ### In your terminal
 
-You need [Node.js](https://nodejs.org) 20 or newer, and git.
+Needs [Node.js](https://nodejs.org) 20+ and git.
 
 ```bash
-# Try it without installing anything
-npx unbraid --dry-run
-
-# Or install it properly
-npm install -g unbraid
+npx unbraid --dry-run     # try it — changes nothing
+npm install -g unbraid    # or keep it around
 ```
 
-`--dry-run` means "show me what you'd do, but don't actually do it." A safe first step.
+---
 
 ## Your first run
 
 ```bash
-cd ~/your-project     # any project with uncommitted changes
+cd ~/your-project
 unbraid --dry-run
 ```
 
-You'll see the plan, and nothing else happens. When you're ready for real:
+You'll see the plan, and nothing else happens. When you're ready:
 
 ```bash
 unbraid
 ```
 
-**Nervous? Do it on a branch you can throw away:**
+**Want a safety net?** Do it on a branch you can throw away:
 
 ```bash
 git checkout -b unbraid-test
 unbraid
-```
-
-If you don't like the result, undo all of it:
-
-```bash
+# don't like it?
 git reset --hard origin/main
 ```
 
 ## Is this safe?
 
-Short answer: yes, and the tool is built around that question. Two guarantees:
+Two guarantees, both enforced in code and covered by tests.
 
-**1. It never changes your files.** unbraid only *stages* and *commits*. It never edits,
-deletes, or overwrites anything in your project — the code on your disk is read-only to this
-tool. If something fails halfway through, every commit it made is undone and your setup is
-put back exactly as it was.
+**It never changes your files.** unbraid only *stages* and *commits*. It never edits, deletes,
+or overwrites anything in your project — your code is read-only to this tool. If something
+fails halfway through, every commit it made is undone and your staging restored exactly.
 
-**2. It never loses a change.** AI models make mistakes: they invent filenames, list the same
-file twice, or quietly forget one. So unbraid doesn't trust the AI's answer. It checks every
-file the AI mentioned against your real files — invented names are dropped, duplicates
-removed, and anything the AI forgot is shown to you instead of being skipped.
-
-Every changed file is accounted for on every run. That's enforced by code and covered by
-tests, not by asking the AI nicely.
+**It never loses a change.** AI models invent filenames, list the same file twice, and forget
+others. So unbraid doesn't trust the answer: it checks every file the model named against your
+real changes. Invented ones are dropped, duplicates removed, anything forgotten is shown to
+you rather than skipped.
 
 ## Does it cost money?
 
-**If you have [Claude Code](https://claude.com/claude-code) installed and signed in: no.**
-unbraid finds it automatically and uses the subscription you already pay for. No API key, no
-per-use charge, no setup.
+**Not if you already have [Claude Code](https://claude.com/claude-code) or the
+[Codex CLI](https://developers.openai.com/codex/cli).** unbraid finds either and uses the
+subscription you already pay for — no API key, no per-use charge, no setup.
 
-Otherwise, run `unbraid init` and it will walk you through the options — including running a
-model **entirely on your own laptop** for free with Ollama. See [Providers](#providers).
+Otherwise run `unbraid init`, which walks you through the alternatives — including running a
+model **entirely on your own machine** for free. See [Providers](#providers).
 
-## Using the review screen
+---
 
-After unbraid thinks (10–60 seconds, depending), you get an interactive list. **Nothing is
-committed until you press `c`.**
+## How it works
 
-| Key | What it does |
+```
+1. READ     every changed, added, deleted, renamed, and untracked file
+2. GROUP    a cheap pass over paths and truncated diffs decides what belongs together
+3. WRITE    one pass per group, over that group's full diff, writes title and body
+4. REVIEW   you reorder, merge, rename, or drop anything before it's written
+5. COMMIT   stage each group, commit it, optionally push once at the end
+```
+
+Under ~15 files it does steps 2 and 3 in one pass, which is both faster and better.
+
+### The review screen
+
+Nothing is committed until you press `c`.
+
+| Key | |
 | --- | --- |
-| `↑` `↓` | Move between commits |
-| `space` | Show which files are in this commit |
-| `e` | Rename this commit's message |
-| `J` `K` | Move this commit up or down |
-| `m` | Merge this commit into the one above it |
-| `d` | Remove this commit (the files aren't deleted — they go back to the pile) |
-| `c` | **Commit everything** |
-| `q` | Quit without committing anything |
+| `↑` `↓` | move between commits |
+| `space` | show this commit's files |
+| `e` | rename it |
+| `J` `K` | move it up or down |
+| `m` | merge into the commit above |
+| `d` | remove it — files go back to the pile, never deleted |
+| `c` | **commit everything** |
+| `q` | quit, committing nothing |
+
+---
 
 ## Everyday commands
 
 ```bash
 unbraid init             # set up a provider, step by step
-unbraid                  # the normal thing: plan, review, commit
+unbraid                  # plan, review, commit
 unbraid --dry-run        # show the plan, change nothing
-unbraid --push           # commit, then push once at the end
-unbraid -g fine          # smaller commits — roughly one per file
-unbraid -g coarse        # fewer, bigger commits
-unbraid --hunks          # split one file across commits (see below)
+unbraid --push           # commit, then push once
+unbraid -g fine          # smaller commits, roughly one per file
+unbraid --hunks          # split a file that mixes two concerns
 unbraid pr               # write a pull request description
-unbraid config           # show your current settings
+unbraid config           # show settings and where each came from
 unbraid --help           # everything
 ```
 
 ### How big should commits be?
 
-That's the `-g` (granularity) setting. The same 30 changed files, three different results:
+The `-g` setting. Same 30 files, three results:
 
-| Setting | Result | Good for |
+| | Commits | Good for |
 | --- | --- | --- |
-| `-g coarse` | ~3 commits | Grouping broadly: features, fixes, chores |
-| *(default)* | ~6 commits | One commit per feature or fix |
-| `-g fine` | ~12 commits | Roughly one commit per file |
+| `-g coarse` | ~3 | broad strokes: features, fixes, chores |
+| *(default)* | ~6 | one per feature or fix |
+| `-g fine` | ~12 | roughly one per file |
 
-If you always want one of these, put it in a config file rather than typing it every time —
-see [Configuration](#configuration).
+Want it every time? Put it in a [config file](#configuration) rather than typing it.
 
 ### Splitting one file across commits
 
-Normally a commit takes whole files. So if you fixed a bug on line 3 **and** renamed a
-function on line 40 of the same file, they're stuck in one commit together.
-
-`--hunks` unsticks them. (A *hunk* is git's word for one group of changed lines.)
+A commit normally takes whole files. So a bug fix on line 3 and an unrelated rename on line 40
+end up stuck together.
 
 ```bash
 unbraid --hunks
@@ -213,105 +204,58 @@ unbraid --hunks
      · src/user.ts (1 of its changes)
 ```
 
-Two commits from one file. Now you could undo the rename without undoing the bug fix.
-
-It's **off by default**, because most of the time a file's changes do belong together.
+Two commits from one file. Off by default — most files don't mix concerns.
 
 <details>
 <summary><b>How this stays safe</b></summary>
 
-The obvious approach is `git apply`, peeling off one group of changes at a time. That's
-fragile: removing one group shifts the line numbers of every group after it, so patches
-either fail or — much worse — apply in the wrong place.
+The obvious approach is `git apply`, peeling off one group at a time. That's fragile: removing
+one group shifts the line numbers of every group after it, so patches fail or — worse — apply
+in the wrong place.
 
-unbraid doesn't do that. It calculates exactly what the file should contain at each commit
-and writes that content straight into git's internal storage. Your actual file is never
-touched.
+unbraid doesn't do that. It computes exactly what the file should contain at each commit and
+writes that content straight into git's object store. Your file is never touched.
 
-Before it will split a file at all, it checks that applying *all* of that file's changes
-reproduces your file byte-for-byte. If that check fails, unbraid decides it doesn't
-understand the file well enough to take it apart, and commits it whole instead.
+And before it will split a file at all, it checks that applying *all* of that file's changes
+reproduces your file byte-for-byte. If that check fails, it commits the file whole instead.
 
 </details>
 
 ### Writing a pull request
 
-Once your commits exist, unbraid can describe the whole branch:
-
 ```bash
 unbraid pr               # print a title and description
 unbraid pr --web         # open a prefilled PR page in your browser
-unbraid pr -e --web      # revise the text first, then open it
-unbraid pr -t dev        # merge into dev instead of the default branch
-unbraid pr -o pr.md      # save it to a file
+unbraid pr -e --web      # edit it first, then open
+unbraid pr -t dev        # target a different branch
 unbraid pr --open        # create it with the GitHub CLI
+unbraid pr -o pr.md      # save to a file
 ```
 
-It reads your **commits**, not the raw code, so the description reflects what you meant
-rather than restating the diff.
+`--web` needs nothing installed — it opens GitHub's own "New pull request" page with the fields
+filled in. If your branch isn't pushed, unbraid offers to push it first, and it catches the
+quieter case too: a branch that *is* pushed but has newer local commits, which would otherwise
+produce a PR missing your latest work.
 
-**`--web` needs nothing installed.** It opens the same "New pull request" page you'd reach by
-clicking through GitHub, with the title and description already filled in. No CLI, no token,
-no login beyond the browser session you already have. You review it on GitHub and press
-**Create pull request**.
+It describes **your** branch, not branches you merged in. Merge `dev` into yours and those
+commits stay out of the description — a branch with two commits of its own reads as two, not
+sixty-four.
 
-If your branch hasn't been pushed, unbraid notices and offers to push it first:
-
-```console
-$ unbraid pr --web
-
-feat/exchange-rate → master · 3 commits · 5 files
-
-feat/exchange-rate has not been pushed yet. GitHub cannot open a pull
-request for a branch it cannot see.
-
-Push to origin/feat/exchange-rate? [Y/n]
-  ✓ pushed
-
-Opening aulianza/tripana in your browser…
-```
-
-Press Enter to accept — you already asked for a pull request, so pushing the branch is part of
-what you asked for.
-
-It also catches the quieter version of that problem — a branch that *is* pushed but has newer
-local commits, which would otherwise produce a pull request silently missing your latest work.
-
-**It describes your branch, not branches you merged in.** If you merged `dev` or another
-feature branch into yours, those commits are in the diff but they aren't your work — unbraid
-leaves them out of the description and notes their presence in one line instead. A branch with
-two commits of its own reads as two, not sixty-four.
-
-**Descriptions are kept short on purpose:** why the change exists, at most six one-line
-bullets, and concrete testing steps. A description nobody finishes reading has failed at its
-job.
-
-**Choosing the target branch.** By default unbraid works out what you'd merge into: the
-remote's default branch, falling back to `main`, `master`, `develop`, or `trunk`. Override it
-per run with `-t`, or permanently:
-
-```yaml
-# .unbraidrc.yaml
-pr:
-  target: dev
-```
-
-**`--edit`** opens the draft in `$EDITOR` before anything is sent anywhere. First line is the
-title, the rest is the description — the same convention as a git commit message. Empty the
-file to cancel.
-
-> `--web` supports GitHub. On GitLab or Bitbucket, unbraid says so instead of opening a page
-> that won't work — use `-o pr.md` and paste it.
+---
 
 ## Providers
 
-A "provider" is whichever AI writes your commit messages. unbraid works with several.
+A "provider" is whichever AI writes your messages. Two of them cost nothing extra.
 
 | Provider | What you need | Cost |
 | --- | --- | --- |
-| **Claude Code CLI** *(default)* | Nothing — detected automatically | **Free** with your existing subscription |
-| **Anthropic API** | `ANTHROPIC_API_KEY` in your environment | Pay per use |
-| **Anything OpenAI-compatible** | A URL, usually a key | Varies — or free locally |
+| **Claude Code** *(default)* | nothing — detected automatically | **free** with your subscription |
+| **Codex CLI** | nothing — detected automatically | **free** with your subscription |
+| **Anthropic API** | an API key | per token |
+| **Anything OpenAI-compatible** | a URL, usually a key | varies, or free locally |
+
+With `provider: auto`, unbraid prefers the CLIs — they cost nothing beyond what you already
+pay for — then falls back to whichever API key it finds.
 
 ### The easy way
 
@@ -319,108 +263,111 @@ A "provider" is whichever AI writes your commit messages. unbraid works with sev
 unbraid init
 ```
 
-This walks you through picking a provider, tells you where to get a key if you need one,
-writes the config file for you, and then **makes a real call to check it works** before you
-walk away.
+Walks you through the options, takes your API key if one is needed, writes the config, and then
+**makes a real call to check it works** before you walk away.
 
 ```console
 $ unbraid init
 
-unbraid setup
-
-✓ Claude Code found — you can use it free with your existing subscription
+✓ Claude Code found — free with your existing subscription
 
 Which AI should write your commit messages?
   ❯ 1. Claude Code — free, no API key, already installed
-    2. Anthropic API
-    3. Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama)
+    2. Codex CLI — free, no API key
+    3. Anthropic API
+    4. Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama)
 
-Choice [1]: 1
+  ↑↓ move · 1-9 pick · enter confirm
 
-How big should each commit be?
-  ❯ 1. One commit per feature or fix
-    2. One commit per file
-    3. Few, large commits
-
-Choice [1]: 1
-
-✓ Wrote /Users/you/project/.unbraidrc.yaml
+✓ Wrote .unbraidrc.yaml
 
 Testing the connection…
 ✓ claude-cli/sonnet is working
-
-Ready. Try it out:
-
-  cd your-project
-  unbraid --dry-run
 ```
 
-Add `--global` to configure every project at once instead of just this one.
+Keys you paste are stored in `~/.config/unbraid/credentials.json`, readable only by you —
+**never** in your repository's config, which is a file you commit. An exported environment
+variable always wins over a stored key.
+
+Add `--global` to configure every project at once.
 
 ### Setting it up by hand
 
 <details>
+<summary><b>Claude Code or Codex CLI</b> — free with a subscription</summary>
+
+Install either and sign in. unbraid finds it with no configuration:
+
+- [Claude Code](https://claude.com/claude-code)
+- [Codex CLI](https://developers.openai.com/codex/cli)
+
+To pin one explicitly:
+
+```yaml
+# .unbraidrc.yaml
+provider: codex-cli      # or claude-cli
+```
+
+Both run headless, sandboxed read-only, and are asked for schema-conforming JSON — unbraid
+never lets an agent CLI execute anything on your behalf.
+
+> **Codex users:** if you run codex behind a custom `--profile`, check that the profile still
+> honours `--output-schema`. Some routing profiles return plain text instead, and unbraid then
+> falls back to a single commit.
+
+</details>
+
+<details>
 <summary><b>Anthropic API</b></summary>
 
-1. Get a key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
-2. Add it to your shell profile (`~/.zshrc` on macOS, `~/.bashrc` on most Linux):
+Get a key from [console.anthropic.com](https://console.anthropic.com/settings/keys), then run
+`unbraid init` and paste it — or export it yourself:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-3. Open a new terminal, then create `.unbraidrc.yaml` in your project:
-
 ```yaml
+# .unbraidrc.yaml
 provider: anthropic
 providers:
   anthropic:
     model: claude-sonnet-5
 ```
 
-That's it — `unbraid` will use it. Check with `unbraid config`.
-
 </details>
 
 <details>
 <summary><b>OpenAI, OpenRouter, Z.AI, Groq, DeepSeek</b></summary>
 
-All of these speak the same protocol, so they share one setup. Pick your service's URL:
+All speak the same protocol, so they share one setup:
 
 ```yaml
 # .unbraidrc.yaml
 provider: openai-compatible
 providers:
   openai-compatible:
-    baseUrl: https://api.openai.com/v1     # see the table below
-    apiKeyEnv: OPENAI_API_KEY              # the env var holding your key
+    baseUrl: https://api.openai.com/v1
+    apiKeyEnv: OPENAI_API_KEY
     model: gpt-4o
 ```
 
-| Service | `baseUrl` | Get a key |
+| Service | `baseUrl` | Key |
 | --- | --- | --- |
 | OpenAI | `https://api.openai.com/v1` | [platform.openai.com](https://platform.openai.com/api-keys) |
 | OpenRouter | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
-| Z.AI (pay-as-you-go) | `https://api.z.ai/api/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
-| Z.AI (Coding Plan) | `https://api.z.ai/api/coding/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
+| Z.AI — pay as you go | `https://api.z.ai/api/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
+| Z.AI — Coding Plan | `https://api.z.ai/api/coding/paas/v4` | [z.ai](https://z.ai/manage-apikey/apikey-list) |
 | Groq | `https://api.groq.com/openai/v1` | [console.groq.com](https://console.groq.com/keys) |
 | DeepSeek | `https://api.deepseek.com/v1` | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 
-Then export your key:
-
-```bash
-export OPENAI_API_KEY="..."      # or OPENROUTER_API_KEY, ZAI_API_KEY, GROQ_API_KEY…
-```
-
-> **Z.AI users:** the two URLs are *not* interchangeable. A Coding Plan key sent to the
-> pay-as-you-go endpoint returns a `404` that looks like an authentication error.
+> **Z.AI:** the two URLs are not interchangeable. A Coding Plan key sent to the pay-as-you-go
+> endpoint returns a `404` that looks like an authentication error.
 
 </details>
 
 <details>
-<summary><b>Ollama — free, and nothing leaves your laptop</b></summary>
-
-Your code is never sent anywhere. Install [Ollama](https://ollama.com), then:
+<summary><b>Ollama</b> — free, and nothing leaves your machine</summary>
 
 ```bash
 ollama pull qwen2.5-coder
@@ -436,50 +383,62 @@ providers:
     model: qwen2.5-coder
 ```
 
-No API key needed. unbraid recognises local addresses and skips the credential warning,
-since nothing is leaving the machine.
+No key needed. unbraid recognises local addresses, skips the credential warning, and never
+checks for updates — nothing leaves the machine.
 
-Quality depends on the model you run — a small local model writes vaguer messages than a
-frontier one. `qwen2.5-coder` is a reasonable starting point.
+Quality tracks the model: a small local one writes vaguer messages than a frontier one.
 
 </details>
 
-**A note on speed.** The free Claude Code option is slower — roughly 10–60 seconds per run,
-because it starts a whole CLI each time. An API key is noticeably faster. Free-and-slower is
-the right default for most people, but that's the trade.
+**A note on speed.** The free CLI providers are slower — 10–60 seconds a run, since each starts
+a whole CLI. An API key is noticeably faster. Free-and-slower is the right default for most
+people, but that's the trade.
+
+---
 
 ## Configuration
 
-**You don't need any of this.** unbraid is built to be correct out of the box. Configure it
-only when you want something different.
+**You don't need any of this.** Configure only what you want to change.
 
-Create `.unbraidrc.yaml` in your project (settings for that project), or
-`~/.config/unbraid/config.yaml` (settings for everything you do).
-
-The most common thing people want:
+Create `.unbraidrc.yaml` in your project, or `~/.config/unbraid/config.yaml` for everything.
+The most common one:
 
 ```yaml
-# Always make small, per-file commits
 grouping:
-  granularity: fine
+  granularity: fine     # always small, per-file commits
 ```
 
 <details>
-<summary><b>Every available setting</b></summary>
-
-Every value shown is the default. Deleting the file changes nothing.
+<summary><b>Every setting</b> — every value shown is the default</summary>
 
 ```yaml
-provider: auto              # auto | claude-cli | anthropic | openai-compatible
+provider: auto              # auto | claude-cli | codex-cli | anthropic | openai-compatible
 model: auto
+updateCheck: true           # check npm once a day, in the background
+
+providers:
+  claude-cli:
+    bin: claude
+    extraArgs: []
+  codex-cli:
+    bin: codex
+    model: auto             # auto lets codex pick its own
+    extraArgs: []
+  anthropic:
+    apiKeyEnv: ANTHROPIC_API_KEY
+    model: claude-sonnet-5
+  openai-compatible:
+    baseUrl: https://api.openai.com/v1
+    apiKeyEnv: OPENAI_API_KEY
+    model: gpt-4o
 
 grouping:
   granularity: semantic     # fine | semantic | coarse
-  maxCommits: 20            # never make more commits than this
-  respectStaged: true       # already staged something? it's left exactly as you set it
-  hunks: false              # allow one file to be split across commits
-  expandUntrackedDirsUpTo: 10   # a new folder with more files than this counts as one item
-  hints:                    # your own rules, applied before the AI sees anything
+  maxCommits: 20
+  respectStaged: true       # already staged? left exactly as you set it
+  hunks: false              # allow one file to split across commits
+  expandUntrackedDirsUpTo: 10   # a new folder with more files counts as one item
+  hints:                    # your rules, applied before the AI sees anything
     - match: "(package-lock.json|pnpm-lock.yaml|bun.lock)"
       group: "chore(deps): update lockfile"
 
@@ -490,42 +449,44 @@ message:
   maxTitleLength: 72
   body: auto                # always | never | auto
   bodyStyle: bullets        # bullets | prose
-  language: en              # write commit messages in any language
-  ticketPattern: null       # "([A-Z]+-\\d+)" pulls a ticket number from your branch name
+  language: en              # write messages in any language
+  ticketPattern: null       # "([A-Z]+-\\d+)" lifts a ticket key from the branch name
   signOff: false
 
 context:
-  singlePassThreshold: 15   # below this many files, use one faster AI call
-  truncateLines: 20         # how much of each file the AI sees when grouping
+  singlePassThreshold: 15   # at or under this, one faster AI call
+  truncateLines: 20
   maxDiffBytes: 100000
-  logSample: 20             # how many past commits to read to learn your style
+  logSample: 20             # past commits read to learn your style
   exclude: ["*.lock", "*.min.js", "*.snap", "dist/**", "*.{png,jpg,svg,woff2}"]
 
 execute:
   push: false
   pushRemote: origin
-  autoconfirm: false        # skip the review screen — for scripts
-  onError: rollback         # rollback | keep
+  autoconfirm: false        # skip the review screen, for scripts
+  onError: rollback
   verify: true              # run your git hooks
+
+pr:
+  target: null              # null detects it: origin/HEAD, then main, master, develop
 
 guard:
   secrets: true             # stop before sending credential-like files to a cloud provider
   secretPatterns: [".env", ".env.*", "*.pem", "*_rsa", "*.key", "*.p12"]
 ```
 
-Settings combine in layers, later ones winning:
-**defaults → `~/.config/unbraid/config.yaml` → `.unbraidrc.yaml` → environment → command-line flags**
+Settings combine in layers, later winning:
+**defaults → `~/.config/unbraid/config.yaml` → `.unbraidrc.yaml` → environment → flags**
 
-Run `unbraid config` to see the result and where each value came from.
+`unbraid config` prints the result and where each value came from.
 
-Note that `exclude` means "don't spend AI tokens reading this file." Those files are **still
-committed** — they're just not sent to the AI.
+`exclude` means "don't spend tokens reading this" — those files are **still committed**.
 
 </details>
 
 ### Message style
 
-By default unbraid writes [Conventional Commits](#glossary) — `type(scope): summary`:
+Conventional Commits by default — `type(scope): summary`:
 
 ```
 feat(auth): add refresh token rotation
@@ -533,19 +494,36 @@ fix(api): handle null user in profile route
 refactor: migrate from pages router to app router
 ```
 
-It also reads your last 20 commits to pick up the scopes you already use, so it writes `ui`
-and `i18n` rather than inventing `frontend` and `translations`.
+Scopes are *encouraged, not required*. Forcing one on every commit is how you get `fix(fix):`.
+unbraid also reads your last 20 commits and reuses the scopes and types already in use, so it
+writes `ui` and `i18n` rather than inventing `frontend` and `translations`.
 
-Want it to match your existing style instead — even if that's plain sentences or emoji? Set
+Prefer to match whatever the repo already does — plain sentences, emoji, anything? Set
 `message.format: auto`.
+
+---
+
+## In your editor
+
+The extension gives you the same engine with a panel of its own:
+
+- Your changed files, with the icons and colours from your own theme
+- Stage, unstage, discard, switch branch, sync — without opening Source Control
+- The review panel: rename, merge, reorder, drop commits before anything is written
+- **Undo the last run** — puts HEAD and your staging back exactly as they were
+- `⌘⇧U` / `Ctrl+Shift+U` to start
+
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode) ·
+[Open VSX](https://open-vsx.org/extension/aulianza/unbraid-vscode) ·
+[source](extension/)
 
 ## Scripting
 
-Every part of unbraid works without the interactive screen, so you can automate it:
+Every part works without the interactive screen:
 
 ```bash
 unbraid plan -o plan.json     # work out the commits, change nothing
-$EDITOR plan.json             # edit by hand if you like
+$EDITOR plan.json             # edit by hand
 unbraid apply --plan plan.json
 ```
 
@@ -554,96 +532,64 @@ unbraid apply --plan plan.json
 unbraid checks npm once a day, in the background, and mentions it after a command finishes:
 
 ```
-Update available  0.7.0 → 0.8.0
+Update available  0.8.0 → 0.9.0
 npm i -g unbraid@latest
 ```
 
-It never delays a run — the check reads a local cache and refreshes afterwards, so a new
-release is mentioned on your next run rather than blocking the current one. The command shown
-matches how you installed it, whether that was npm, pnpm, or bun.
+It never delays a run, and stays quiet in CI, when piped, when installed via `npx`, and **when
+your provider runs on your own machine**. Turn it off with `updateCheck: false` or
+`UNBRAID_NO_UPDATE_CHECK=1`. The check sends no identifier and nothing about you or your code.
 
-**It stays quiet when a notice would be unwelcome:** in CI, when output is piped, when you
-installed via `npx` (which already fetches the newest version every time), and **when your
-provider runs on your own machine** — if you chose Ollama to keep everything local, unbraid
-does not make an outbound request you did not ask for.
-
-Turn it off entirely:
-
-```yaml
-# .unbraidrc.yaml
-updateCheck: false
-```
-
-or set `UNBRAID_NO_UPDATE_CHECK=1`.
-
-The check is a plain GET for a version number. It sends no identifier, no telemetry, and
-nothing about you or your code.
+---
 
 ## Troubleshooting
 
 **`command not found: unbraid`**
-Install it with `npm install -g unbraid`, or use `npx unbraid` with no install at all.
+`npm install -g unbraid`, or use `npx unbraid`.
 
 **"No AI provider available"**
-Run `unbraid init` — it walks you through the options and checks the result works.
+Run `unbraid init` — it walks the options and checks the result works.
 
 **"Nothing to commit — the working tree is clean"**
-You have no uncommitted changes. Edit something first.
+No uncommitted changes. Edit something first.
 
 **"A merge is in progress"**
-Finish or abort your merge or rebase first. unbraid won't commit into a half-finished
-operation, because it couldn't safely undo one.
+Finish or abort it first. unbraid won't commit into a half-finished operation, because it
+couldn't safely undo one.
 
 **It's slow.**
-Expected on the free Claude Code provider — it restarts a CLI on every call. An API key is
-faster. Watch the timer; it's working.
+Expected on the free CLI providers — each run starts a whole CLI. An API key is faster.
 
 **It grouped things wrongly.**
-Press `e` to rename, `m` to merge commits together, `J`/`K` to reorder, or `q` to throw the
-whole plan away. Nothing is committed until you press `c`.
+Press `e` to rename, `m` to merge, `J`/`K` to reorder, `q` to throw the plan away. Nothing is
+committed until you press `c`.
 
 ## Glossary
 
-**Staging** — Git's waiting room. Before committing you tell git which changes to include
-(`git add`). Deciding what goes in each batch is the tedious part unbraid automates.
+**Staging** — git's waiting room. Before committing you tell git which changes to include
+(`git add`). Deciding what goes in each batch is the part unbraid automates.
 
-**Atomic commit** — A commit that does exactly one thing. Easier to review, easier to undo,
-and it makes your history readable.
+**Atomic commit** — a commit that does one thing. Easier to review, easier to undo, and it
+makes your history readable.
 
-**Hunk** — One group of changed lines within a file. Change the top and the bottom of a file
-and you have two hunks. Usually they're related; when they're not, `--hunks` can put them in
-separate commits.
+**Hunk** — one group of changed lines in a file. Change the top and the bottom and you have two.
 
-**Conventional Commits** — A widely used format: `type(scope): summary`, like
-`fix(auth): reject expired tokens`. Machines can parse it to build changelogs, and humans can
-scan it quickly.
+**Conventional Commits** — the `type(scope): summary` format, like
+`fix(auth): reject expired tokens`. Machines can build changelogs from it; humans can scan it.
 
-**Working tree** — Your project files as they exist on disk right now.
+**Working tree** — your project files as they are on disk right now.
 
-## The VS Code extension
-
-Everything below works from the command line. If you would rather stay in the editor, the
-extension gives you the same thing with a panel of its own:
-
-- Your changed files, with the icons and colours from whatever theme you already use
-- Stage, unstage, discard, switch branch, and sync — without opening Source Control
-- A review panel where you rename, merge, reorder, and drop commits before anything is written
-- **Undo the last run**, which puts HEAD and your staging back exactly as they were
-- `⌘⇧U` / `Ctrl+Shift+U` to start
-
-[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=aulianza.unbraid-vscode) ·
-[Open VSX](https://open-vsx.org/extension/aulianza/unbraid-vscode) ·
-[source](extension/)
+---
 
 ## Status
 
-**v0.4 — early, but real.** Grouping, message generation, the review screen, commits with
-automatic rollback, hunk-level splitting, PR drafting, and all three providers work and are
-covered by 269 tests.
+**Early, but real.** Grouping, message generation, the review screen, commits with automatic
+rollback, hunk-level splitting, PR drafting, and four providers all work and are covered by
+tests.
 
-Expect rough edges. Bug reports and pull requests are genuinely welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md), and [ARCHITECTURE.md](docs/ARCHITECTURE.md) if you want to
-know how it works inside.
+Expect rough edges. Bug reports and pull requests genuinely welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md), and [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it
+works inside.
 
 ## License
 

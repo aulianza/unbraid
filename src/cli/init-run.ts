@@ -5,16 +5,28 @@ import { dirname, join } from 'node:path'
 import {
   PRESETS,
   buildConfig,
-  exportLine,
-  profilePath,
   renderConfigFile,
   type InitAnswers,
   type Preset,
 } from './init.js'
 import { isClaudeCliAvailable } from '../core/providers/claude-cli.js'
+import { isCodexCliAvailable } from '../core/providers/codex-cli.js'
 import { resolveProvider } from '../core/providers/resolve.js'
 import { configSchema } from '../core/config/schema.js'
 import { bold, cyan, dim, green, red, yellow } from './render.js'
+import {
+  reduceSelect,
+  renderSelect,
+  selectHeight,
+  type Key,
+  type SelectOption,
+} from './prompt.js'
+import {
+  saveCredential,
+  readCredentials,
+  credentialsPath,
+  maskKey,
+} from '../core/config/credentials.js'
 
 export interface InitOptions {
   /** Write to ~/.config/unbraid rather than this project. */
@@ -56,42 +68,139 @@ export async function runInit(options: InitOptions): Promise<void> {
     )
   }
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-
   /**
    * Ask a question, treating a closed input as a cancellation.
    *
    * readline rejects with "readline was closed" when stdin ends mid-prompt —
    * which is what Ctrl-D does. Surfacing that raw tells the user their setup
    * crashed when in fact they cancelled it.
+   *
+   * The interface is created and closed per question rather than held open for
+   * the whole wizard. A long-lived interface has to share stdin with the raw
+   * key handling in `choose` below, and the two fight over it: the list would
+   * work once and every prompt after it would hang forever.
    */
   const ask = async (question: string, fallback = ''): Promise<string> => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
     let answer: string
     try {
       answer = await rl.question(question)
     } catch {
       throw new SetupCancelled()
+    } finally {
+      rl.close()
     }
     const trimmed = answer.trim()
     return trimmed === '' ? fallback : trimmed
   }
 
+  /**
+   * A navigable list.
+   *
+   * Raw mode so arrow keys arrive as keypresses rather than as escape
+   * sequences buried in a line of text. Typing a digit both selects and
+   * confirms, because at a numbered list "2" means "I want the second one",
+   * not "highlight the second one".
+   *
+   * Falls back to the readline prompt when raw mode is unavailable — piped
+   * input, or a terminal that does not support it — so the wizard still works
+   * rather than throwing.
+   */
   const choose = async (
     question: string,
-    options_: Array<{ label: string; hint?: string }>,
+    options_: SelectOption[],
     defaultIndex = 0,
   ): Promise<number> => {
     console.log(`\n${bold(question)}`)
-    options_.forEach((option, i) => {
-      const marker = i === defaultIndex ? cyan('❯') : ' '
-      console.log(`  ${marker} ${i + 1}. ${option.label}`)
-      if (option.hint) console.log(`       ${dim(option.hint)}`)
-    })
-    const raw = await ask(`\nChoice [${defaultIndex + 1}]: `, String(defaultIndex + 1))
-    const index = Number(raw) - 1
-    return Number.isInteger(index) && index >= 0 && index < options_.length
-      ? index
-      : defaultIndex
+
+    if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
+      console.log(renderSelect(options_, defaultIndex, { cyan, dim, bold }))
+      const raw = await ask(`\nChoice [${defaultIndex + 1}]: `, String(defaultIndex + 1))
+      const index = Number(raw) - 1
+      return Number.isInteger(index) && index >= 0 && index < options_.length
+        ? index
+        : defaultIndex
+    }
+
+    const height = selectHeight(options_)
+    let index = defaultIndex
+
+    const draw = (first: boolean) => {
+      // Move back over the previous render and overwrite it, so the list
+      // updates in place instead of scrolling a new copy on every keypress.
+      if (!first) process.stdout.write(`\u001b[${height}A`)
+      process.stdout.write(`\u001b[0J`)
+      process.stdout.write(`${renderSelect(options_, index, { cyan, dim, bold })}\n`)
+    }
+
+    // Decode keypresses without building a readline interface. An interface
+    // here would take ownership of stdin and hand it back in a state the next
+    // question cannot read from.
+    const { emitKeypressEvents } = await import('node:readline')
+    emitKeypressEvents(process.stdin)
+    process.stdin.setRawMode(true)
+    process.stdin.resume()
+    process.stdout.write('\u001b[?25l')
+
+    draw(true)
+    console.log(dim('  ↑↓ move · 1-9 pick · enter confirm'))
+
+    let onKey: ((str: string, key: Key) => void) | undefined
+
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        onKey = (_str, key) => {
+          const action = reduceSelect(key, index, options_.length)
+
+          if (action.type === 'move') {
+            index = action.index
+            // Redraw over the list and its hint line.
+            process.stdout.write('\u001b[1A')
+            draw(false)
+            console.log(dim('  ↑↓ move · 1-9 pick · enter confirm'))
+            return
+          }
+          if (action.type === 'choose') resolve(action.index)
+          if (action.type === 'cancel') reject(new SetupCancelled())
+        }
+        process.stdin.on('keypress', onKey)
+      })
+    } finally {
+      // Detached here rather than beside each resolve so cancellation is
+      // covered too. A listener left behind eats the next question's input.
+      if (onKey) process.stdin.off('keypress', onKey)
+      process.stdin.setRawMode(false)
+      process.stdin.pause()
+      process.stdout.write('\u001b[?25h')
+    }
+  }
+
+  /**
+   * Ask for an API key and store it.
+   *
+   * Saved under the user's config directory, never in the repository config —
+   * that file is meant to be committed, and a key written there gets pushed
+   * sooner or later.
+   *
+   * Input is not masked. Terminal masking requires raw mode, which breaks
+   * paste on several terminals, and a key nobody can paste is worse than one
+   * briefly visible in a scrollback the user already controls.
+   */
+  const promptForKey = async (envVar: string, keyUrl: string | null): Promise<void> => {
+    console.log('')
+    if (keyUrl) console.log(`Get a key at ${cyan(keyUrl)}`)
+
+    const key = await ask(`${bold(`Paste your ${envVar}`)} ${dim('(enter to skip): ')}`)
+    if (key === '') {
+      console.log(
+        dim(`\nSkipped. Set ${envVar} in your shell, or run \`unbraid init\` again.`),
+      )
+      return
+    }
+
+    await saveCredential(envVar, key)
+    console.log(green(`✓ Saved ${maskKey(key)} to ${credentialsPath()}`))
+    console.log(dim('  Stored outside your repository, readable only by you.'))
   }
 
   try {
@@ -105,6 +214,11 @@ export async function runInit(options: InitOptions): Promise<void> {
     )
 
     // 1. Provider
+    const codexAvailable = await isCodexCliAvailable()
+    if (codexAvailable) {
+      console.log(green('✓ Codex CLI found — free with your existing subscription'))
+    }
+
     const providerChoices = [
       {
         label: claudeAvailable
@@ -112,25 +226,33 @@ export async function runInit(options: InitOptions): Promise<void> {
           : 'Claude Code — free, but not installed yet',
         hint: claudeAvailable ? undefined : 'Install from https://claude.com/claude-code',
       },
-      { label: 'Anthropic API', hint: 'Pay per use. Faster than Claude Code.' },
       {
-        label: 'Something else (OpenAI, OpenRouter, Groq, DeepSeek, Ollama)',
-        hint: 'Ollama runs on your own machine for free.',
+        label: codexAvailable
+          ? 'Codex CLI — free, no API key, already installed'
+          : 'Codex CLI — free, but not installed yet',
+        hint: codexAvailable
+          ? undefined
+          : 'Install from https://developers.openai.com/codex/cli',
+      },
+      { label: 'Anthropic API', hint: 'Pay per use. Faster than the CLIs.' },
+      {
+        label: 'Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama)',
+        hint: 'Ollama runs on your own machine, for free.',
       },
     ]
+
+    // Default to whichever free CLI is already installed, since that is the
+    // option with nothing left to configure.
     const providerIndex = await choose(
       'Which AI should write your commit messages?',
       providerChoices,
-      claudeAvailable ? 0 : 1,
+      claudeAvailable ? 0 : codexAvailable ? 1 : 2,
     )
 
     const answers: InitAnswers = {
-      provider:
-        providerIndex === 0
-          ? 'claude-cli'
-          : providerIndex === 1
-            ? 'anthropic'
-            : 'openai-compatible',
+      provider: (['claude-cli', 'codex-cli', 'anthropic', 'openai-compatible'] as const)[
+        providerIndex
+      ]!,
     }
 
     // 2. Provider details, and whatever key it needs.
@@ -138,7 +260,12 @@ export async function runInit(options: InitOptions): Promise<void> {
     let keyUrl: string | null = null
     let presetNote: string | undefined
 
-    if (answers.provider === 'anthropic') {
+    if (answers.provider === 'codex-cli') {
+      answers.codexModel = await ask(
+        `\n${bold('Model')} ${dim("[leave empty to let codex choose]")}: `,
+        'auto',
+      )
+    } else if (answers.provider === 'anthropic') {
       requiredEnv = 'ANTHROPIC_API_KEY'
       keyUrl = 'https://console.anthropic.com/settings/keys'
       answers.anthropicModel = await ask(
@@ -169,17 +296,18 @@ export async function runInit(options: InitOptions): Promise<void> {
     ])
     answers.granularity = (['semantic', 'fine', 'coarse'] as const)[granularityIndex]
 
-    // 4. The key, if one is needed and not already set.
-    if (requiredEnv && !process.env[requiredEnv]) {
-      console.log(`\n${yellow(`${requiredEnv} is not set.`)}`)
-      if (keyUrl) console.log(`Get a key at ${cyan(keyUrl)}`)
-      console.log('\nAdd this to your shell profile:')
-      console.log(
-        `  ${bold(exportLine(requiredEnv))}   ${dim(`# in ${profilePath(process.env.SHELL, homedir())}`)}`,
-      )
-      console.log(dim('\nThen open a new terminal, or run the export in this one.'))
-    } else if (requiredEnv) {
-      console.log(green(`\n✓ ${requiredEnv} is already set`))
+    // 4. The key, if one is needed.
+    if (requiredEnv) {
+      const stored = await readCredentials()
+      const existing = process.env[requiredEnv] ?? stored[requiredEnv]
+
+      if (existing) {
+        console.log(green(`\n✓ ${requiredEnv} is already set (${maskKey(existing)})`))
+        const replace = await ask(`${dim('Replace it? [y/N] ')}`, 'n')
+        if (replace.toLowerCase() === 'y') await promptForKey(requiredEnv, keyUrl)
+      } else {
+        await promptForKey(requiredEnv, keyUrl)
+      }
     }
     if (presetNote) console.log(dim(`\n${presetNote}`))
 
@@ -241,7 +369,11 @@ export async function runInit(options: InitOptions): Promise<void> {
     }
     throw error
   } finally {
-    rl.close()
+    // Every prompt closes its own reader, so the only thing left to undo is
+    // raw mode — which stays on if the wizard threw mid-list.
+    if (process.stdin.isTTY) process.stdin.setRawMode(false)
+    process.stdin.pause()
+    process.stdout.write('[?25h')
   }
 }
 
