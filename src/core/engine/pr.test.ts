@@ -151,6 +151,11 @@ describe('double-escaped newlines', () => {
     expect(trimResponse({ ...response, testing: 'a\\r\\nb' }).testing).toBe('a\nb')
   })
 
+  it('leaves a doubled backslash alone, so prose about escapes survives', () => {
+    const trimmed = trimResponse({ ...response, testing: 'covers \\\\n rendering' })
+    expect(trimmed.testing).toBe('covers \\\\n rendering')
+  })
+
   it('leaves real newlines untouched', () => {
     expect(trimResponse({ ...response, testing: 'a\nb' }).testing).toBe('a\nb')
   })

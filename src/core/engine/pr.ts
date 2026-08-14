@@ -149,9 +149,13 @@ export async function createPrDraft(
  * verbatim. Numbered testing steps come back as one long line reading
  * "1. Run the tests.\n2. Run init." Nothing in a pull request body wants a
  * literal backslash-n, so the substitution is safe.
+ *
+ * A doubled backslash is left alone. That is the one case where the text is
+ * *about* an escape rather than containing one, and converting it would leave
+ * a stray backslash behind.
  */
 function unescapeNewlines(text: string): string {
-  return text.replace(/\\r\\n|\\n/g, '\n')
+  return text.replace(/(?<!\\)\\r\\n|(?<!\\)\\n/g, '\n')
 }
 
 /**
