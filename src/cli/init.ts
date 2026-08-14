@@ -87,9 +87,10 @@ export function findPreset(key: string): Preset | undefined {
 }
 
 export interface InitAnswers {
-  provider: 'claude-cli' | 'anthropic' | 'openai-compatible'
+  provider: 'claude-cli' | 'codex-cli' | 'anthropic' | 'openai-compatible'
   preset?: Preset
   anthropicModel?: string
+  codexModel?: string
   granularity?: 'fine' | 'semantic' | 'coarse'
   hunks?: boolean
 }
@@ -103,6 +104,14 @@ export interface InitAnswers {
  */
 export function buildConfig(answers: InitAnswers): Record<string, unknown> {
   const config: Record<string, unknown> = { provider: answers.provider }
+
+  if (
+    answers.provider === 'codex-cli' &&
+    answers.codexModel &&
+    answers.codexModel !== 'auto'
+  ) {
+    config.providers = { 'codex-cli': { model: answers.codexModel } }
+  }
 
   if (answers.provider === 'anthropic' && answers.anthropicModel) {
     config.providers = { anthropic: { model: answers.anthropicModel } }

@@ -105,6 +105,21 @@ describe('buildConfig', () => {
       buildConfig({ provider: 'anthropic', anthropicModel: 'claude-opus-5' }),
     ).toMatchObject({ providers: { anthropic: { model: 'claude-opus-5' } } })
   })
+
+  it('writes only the provider for Codex CLI', () => {
+    expect(buildConfig({ provider: 'codex-cli' })).toEqual({ provider: 'codex-cli' })
+  })
+
+  it('writes an explicit Codex model but not the auto placeholder', () => {
+    expect(buildConfig({ provider: 'codex-cli', codexModel: 'o3' })).toMatchObject({
+      providers: { 'codex-cli': { model: 'o3' } },
+    })
+    // "auto" is how the wizard records "no answer"; writing it out would pin a
+    // model choice the user never made.
+    expect(
+      buildConfig({ provider: 'codex-cli', codexModel: 'auto' }),
+    ).not.toHaveProperty('providers')
+  })
 })
 
 describe('renderConfigFile', () => {
