@@ -172,6 +172,36 @@ describe('double-escaped newlines', () => {
   })
 })
 
+// Shipped in a real pull request: the prompt asks for an empty string when
+// there is nothing to say about testing, and the model answered with the two
+// characters `"` and `"`, which rendered as a Testing section reading "".
+describe('quoted fields', () => {
+  it('treats a quotes-only field as empty', () => {
+    expect(trimResponse({ ...response, testing: '""' }).testing).toBe('')
+    expect(trimResponse({ ...response, testing: "''" }).testing).toBe('')
+  })
+
+  it('unwraps quotes around a whole field', () => {
+    expect(trimResponse({ ...response, testing: '"Run the tests."' }).testing).toBe(
+      'Run the tests.',
+    )
+  })
+
+  it('leaves quotes that are part of the text', () => {
+    const trimmed = trimResponse({
+      ...response,
+      testing: 'Check the "Testing" section renders.',
+    })
+    expect(trimmed.testing).toBe('Check the "Testing" section renders.')
+  })
+
+  it('leaves an apostrophe alone', () => {
+    expect(trimResponse({ ...response, summary: "Fix the branch's name" }).summary).toBe(
+      "Fix the branch's name",
+    )
+  })
+})
+
 describe('createPrDraft', () => {
   it('renders a title and a structured body', async () => {
     const draft = await createPrDraft(summary, defaultConfig(), stubProvider(response))

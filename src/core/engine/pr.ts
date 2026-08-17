@@ -154,6 +154,23 @@ export async function createPrDraft(
  * *about* an escape rather than containing one, and converting it would leave
  * a stray backslash behind.
  */
+/**
+ * Drop quote marks wrapping a whole field.
+ *
+ * The prompt asks for an empty string when there is nothing to say about
+ * testing, and models answer that literally often enough that a real pull
+ * request shipped with a Testing section containing `""`. Nothing in a title,
+ * summary, or bullet is improved by the quotes that enclose all of it.
+ */
+function unquote(text: string): string {
+  const trimmed = text.trim()
+  const first = trimmed[0]
+  if ((first === '"' || first === "'") && trimmed.length >= 2 && trimmed.endsWith(first)) {
+    return trimmed.slice(1, -1).trim()
+  }
+  return trimmed
+}
+
 function unescapeNewlines(text: string): string {
   return text.replace(/(?<!\\)\\r\\n|(?<!\\)\\n/g, '\n')
 }
@@ -167,10 +184,10 @@ function unescapeNewlines(text: string): string {
 export function trimResponse(response: PrResponse): PrResponse {
   return {
     ...response,
-    testing: unescapeNewlines(response.testing).trim(),
-    summary: truncate(unescapeNewlines(response.summary).trim(), MAX_SUMMARY_LENGTH),
+    testing: unquote(unescapeNewlines(response.testing)),
+    summary: truncate(unquote(unescapeNewlines(response.summary)), MAX_SUMMARY_LENGTH),
     changes: response.changes
-      .map((change) => truncate(unescapeNewlines(change).trim(), MAX_CHANGE_LENGTH))
+      .map((change) => truncate(unquote(unescapeNewlines(change)), MAX_CHANGE_LENGTH))
       .filter((change) => change.length > 0)
       .slice(0, MAX_CHANGES),
   }
