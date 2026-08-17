@@ -142,6 +142,13 @@ async function runReview(
     )
 
     void instance.waitUntilExit().then(() => {
+      // Ink leaves stdin unref'd when it unmounts, so it no longer holds the
+      // event loop open. Anything that prompts afterwards — the pull request
+      // offer — reads a stream nothing is waiting on: the question prints, the
+      // keystroke never arrives, and node exits with "unsettled top-level
+      // await". Handing stdin back here rather than at each prompt keeps every
+      // future caller from having to know this.
+      if (process.stdin.isTTY) process.stdin.ref()
       resolve(settled ?? { outcome: 'cancel', plan })
     })
   })
