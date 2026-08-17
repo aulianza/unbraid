@@ -182,6 +182,14 @@ export const configSchema = z.object({
        * first, then main, master, develop, trunk.
        */
       target: z.string().nullable().default(null),
+
+      /**
+       * After committing, ask whether to open a pull request.
+       *
+       * Only ever asked when there is somebody to answer, the branch is not
+       * the base, the remote is GitHub, and no pull request is open already.
+       */
+      offerAfterCommit: z.boolean().default(true),
     })
     .default({}),
 

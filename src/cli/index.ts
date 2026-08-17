@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { createInterface } from 'node:readline/promises'
 import { readFile, writeFile } from 'node:fs/promises'
 import { Command } from 'commander'
 import { loadConfig } from '../core/config/load.js'
-import { createGit } from '../core/git/exec.js'
+import { createGit, type Git } from '../core/git/exec.js'
 import { executePlan, push } from '../core/git/write.js'
 import { readWorkingTree } from '../core/git/read.js'
 import { buildPlan, PipelineError } from './pipeline.js'
@@ -11,10 +10,10 @@ import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
 import { checkForUpdate } from './update-check.js'
-import { resolveBaseBranch, summarizeBranch, BranchError } from '../core/git/branch.js'
-import { createPrDraft } from '../core/engine/pr.js'
-import { ensurePushed, openWebPr, editDraft, assertWebSupported } from './pr-flow.js'
-import { resolveProvider } from '../core/providers/resolve.js'
+import { BranchError } from '../core/git/branch.js'
+import { runPr, type PrFlags } from './pr-command.js'
+import { gatherOffer, isGhReady } from './pr-offer.js'
+import { confirm } from './prompt.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import { providerNameSchema, type Config } from '../core/config/schema.js'
 
@@ -31,7 +30,10 @@ program.enablePositionalOptions()
 program
   .name('unbraid')
   .description('Unbraid a tangled working tree into atomic commits, with AI-written messages.')
-  .version(__UNBRAID_VERSION__)
+  // -v, not commander's default -V. Every other tool people run all day
+  // spells it lowercase, and a version flag is the one thing you type when you
+  // are already unsure what you have installed.
+  .version(__UNBRAID_VERSION__, '-v, --version', 'print the version and exit')
   // Flag lists say what exists; examples say what to type. Most people reading
   // `-h` want the second.
   .addHelpText(
@@ -44,10 +46,14 @@ Examples:
   $ unbraid -g fine             one commit per file
   $ unbraid --hunks             split files that mix two concerns
   $ unbraid --push              commit, then push once at the end
-  $ unbraid pr                  draft a pull request from this branch
-  $ unbraid pr --web            open a prefilled PR page in your browser
+  $ unbraid pr                  open a pull request for this branch
+  $ unbraid pr --draft          print the draft without opening anything
   $ unbraid pr -t dev           target a different branch
   $ unbraid config              show settings and where each came from
+  $ unbraid -v                  print the installed version
+
+After committing on a branch, unbraid offers to open a pull request for it.
+Turn that off with pr.offerAfterCommit: false in your config.
 
 Providers:
   With Claude Code installed, unbraid uses your existing subscription — no
@@ -141,28 +147,6 @@ async function runReview(
   })
 }
 
-/**
- * Ask a yes/no question.
- *
- * `defaultYes` is for steps the user has already implicitly asked for — pushing
- * a branch when they ran `unbraid pr --open` is a prerequisite of the thing they
- * requested, not a separate decision. Prompts that stand on their own, such as
- * creating commits or sending credential-shaped files to a third party, keep
- * the default of No.
- */
-async function confirm(question: string, defaultYes = false): Promise<boolean> {
-  if (!process.stdin.isTTY) return defaultYes
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const suffix = defaultYes ? '[Y/n]' : '[y/N]'
-    const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase()
-    if (answer === '') return defaultYes
-    return answer === 'y' || answer === 'yes'
-  } finally {
-    rl.close()
-  }
-}
-
 /** A config key nobody reads is a setting the user thinks is working. */
 function warnUnknownKeys(keys: string[]): void {
   if (keys.length === 0) return
@@ -208,6 +192,69 @@ function fail(error: unknown): never {
     console.error(red(error instanceof Error ? error.message : String(error)))
   }
   process.exit(1)
+}
+
+/**
+ * Once the commits exist, offer to turn them into a pull request.
+ *
+ * The commits are the work; the pull request is what makes them visible to
+ * anybody else. Asking here saves re-deriving the base branch and running a
+ * second command, and it asks at the one moment the answer is obvious.
+ *
+ * Nothing in here may fail the run. The commits are already made and safe —
+ * reporting a non-zero exit over a declined pull request would say otherwise.
+ */
+async function offerPullRequest(options: {
+  cwd: string
+  git: Git
+  config: Config
+  unattended: boolean
+}): Promise<void> {
+  try {
+    const context = await gatherOffer({
+      git: options.git,
+      cwd: options.cwd,
+      enabled: options.config.pr.offerAfterCommit,
+      interactive: process.stdin.isTTY === true,
+      unattended: options.unattended,
+      target: options.config.pr.target ?? undefined,
+    })
+
+    if (!context.decision.offer) {
+      // One reason is worth saying out loud rather than staying silent: the
+      // work belongs to a pull request that exists, and pushing is all that is
+      // left to do.
+      if (context.decision.reason === 'already-open' && context.existingPr) {
+        console.log(
+          dim(
+            `\nPull request #${context.existingPr.number} is already open — push to update it.`,
+          ),
+        )
+        console.log(dim(`  ${context.existingPr.url}`))
+      }
+      return
+    }
+
+    console.log('')
+    const target = context.base ? ` against ${context.base}` : ''
+    if (!(await confirm(`Open a pull request${target}?`, true))) {
+      console.log(dim('Not now. Run `unbraid pr` whenever you are ready.'))
+      return
+    }
+
+    // `gh` creates the pull request outright. Without it, a prefilled compare
+    // page needs nothing but the browser session the user already has.
+    const flags = (await isGhReady(options.cwd)) ? { open: true } : { web: true }
+    console.log('')
+    await runPr({ cwd: options.cwd, config: options.config, flags })
+  } catch (error) {
+    console.error(
+      yellow(
+        `\nCould not draft the pull request: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    )
+    console.error(dim('Your commits are safe. Run `unbraid pr` to try again.'))
+  }
 }
 
 /** Shared: build a plan, showing progress and running the credential guard. */
@@ -360,6 +407,7 @@ addPlanningOptions(
           console.log(green('Pushed.'))
         }
 
+        await offerPullRequest({ cwd, git, config, unattended: skipReview })
         await noticeUpdate(config, isOnMachine(provider))
       } catch (error) {
         fail(error)
@@ -450,162 +498,36 @@ program
 addProviderOptions(
   program
     .command('pr')
-    .description("Draft a pull request title and body from this branch's commits.")
+    .description(
+      "Open a pull request for this branch, with the title and body written for you.",
+    )
     .option('-t, --target <branch>', 'branch to merge into (auto-detected)')
     .option('-b, --base <branch>', 'alias for --target')
     .option('-o, --out <file>', 'write the draft to a file')
-    .option('--web', 'open a prefilled pull request page in your browser')
-    .option('--open', 'create the pull request with the GitHub CLI')
+    .option('--draft', 'print the draft instead of opening anything')
+    .option('--web', 'open a prefilled pull request page in your browser (default)')
+    .option('--open', 'create the pull request with the GitHub CLI instead')
     .option('-e, --edit', 'revise the draft in $EDITOR first')
     .option('-y, --yes', 'skip the push confirmation')
-    .action(
-      async (
-        flags: CommonFlags & {
-          target?: string
-          base?: string
-          out?: string
-          web?: boolean
-          open?: boolean
-          edit?: boolean
-          yes?: boolean
-        },
-      ) => {
-        const spinner = createSpinner()
-        try {
-          const cwd = process.cwd()
-          const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
-          warnUnknownKeys(loaded.unknownKeys)
+    .action(async (flags: CommonFlags & PrFlags) => {
+      try {
+        const cwd = process.cwd()
+        const loaded = await loadConfig({ cwd, flags: flagsToConfig(flags) as never })
+        warnUnknownKeys(loaded.unknownKeys)
 
-          const git = createGit(cwd)
-          // -t is the documented flag; --base is kept working for anyone who
-          // scripted against it before -t existed.
-          const requested = flags.target ?? flags.base ?? loaded.config.pr.target ?? undefined
-          const target = await resolveBaseBranch(git, requested)
-          const summary = await summarizeBranch(git, target)
-
-          console.error(
-            dim(
-              `${summary.branch} → ${summary.base} · ${summary.commits.length} commits · ${summary.filesChanged} files`,
-            ),
-          )
-
-          const provider = await resolveProvider(loaded.config)
-          spinner.start(dim('Drafting pull request'))
-          let draft = await createPrDraft(summary, loaded.config, provider)
-          spinner.stop()
-
-          if (flags.edit) {
-            const edited = await editDraft(draft)
-            if (!edited) {
-              console.error(dim('Empty title — cancelled.'))
-              return
-            }
-            draft = edited
-          }
-
-          if (flags.out) {
-            await writeFile(flags.out, `${draft.title}\n\n${draft.body}\n`, 'utf8')
-            console.error(green(`Wrote ${flags.out}`))
-          }
-
-          // Printing is the default; --web and --open are additive.
-          if (!flags.web && !flags.open) {
-            console.log(bold(draft.title))
-            console.log('')
-            console.log(draft.body)
-            return
-          }
-
-          if (flags.web) await assertWebSupported(git)
-
-          const pushed = await ensurePushed({
-            git,
-            branch: summary.branch,
-            remote: loaded.config.execute.pushRemote,
-            confirm: async (reason, pushTarget) => {
-              if (flags.yes) return true
-              console.error(`\n${yellow(reason)}`)
-              return confirm(`Push to ${pushTarget}?`, true)
-            },
-            onPushed: () => console.error(green('  ✓ pushed')),
-          })
-          if (!pushed) {
-            console.error(dim('Not pushed, so no pull request was opened.'))
-            return
-          }
-
-          if (flags.web) {
-            await openWebPr({
-              git,
-              target: summary.base,
-              head: summary.branch,
-              draft,
-              onMessage: (message) => console.error(dim(message)),
-            })
-            return
-          }
-
-          console.log(bold(draft.title))
-          console.log('')
-          console.log(draft.body)
-          console.error('')
-          if (!flags.yes && !(await confirm(`Open this pull request against ${summary.base}?`))) {
-            console.error(dim('Not opened.'))
-            return
-          }
-          await openPullRequest(cwd, summary.base, draft.title, draft.body)
-        } catch (error) {
-          spinner.stop()
-          if (error instanceof BranchError) {
-            console.error(red(error.message))
-            if (error.hint) console.error(dim(error.hint))
-            process.exit(1)
-          }
-          fail(error)
+        await runPr({ cwd, config: loaded.config, flags })
+      } catch (error) {
+        if (error instanceof BranchError) {
+          console.error(red(error.message))
+          if (error.hint) console.error(dim(error.hint))
+          process.exit(1)
         }
-      },
-    ),
+        fail(error)
+      }
+    }),
 )
 
-/**
- * Hand the draft to the GitHub CLI.
- *
- * The body goes in over stdin rather than as an argument: PR bodies routinely
- * exceed the operating system's argument length limit, and backticks in a
- * description would otherwise need escaping.
- */
-async function openPullRequest(
-  cwd: string,
-  base: string,
-  title: string,
-  body: string,
-): Promise<void> {
-  const { spawn } = await import('node:child_process')
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      'gh',
-      ['pr', 'create', '--base', base, '--title', title, '--body-file', '-'],
-      { cwd, stdio: ['pipe', 'inherit', 'inherit'] },
-    )
-
-    child.on('error', (error: NodeJS.ErrnoException) => {
-      reject(
-        error.code === 'ENOENT'
-          ? new Error(
-              'The GitHub CLI (`gh`) is not installed. Install it, or use --out and paste the body yourself.',
-            )
-          : error,
-      )
-    })
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`gh pr create exited with ${code}`))
-    })
-
-    child.stdin?.end(body)
-  })
-}
+// ---------------------------------------------------------------------------
 
 program
   .command('init')

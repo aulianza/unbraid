@@ -170,8 +170,9 @@ unbraid --dry-run        # show the plan, change nothing
 unbraid --push           # commit, then push once
 unbraid -g fine          # smaller commits, roughly one per file
 unbraid --hunks          # split a file that mixes two concerns
-unbraid pr               # write a pull request description
+unbraid pr               # open a pull request for this branch
 unbraid config           # show settings and where each came from
+unbraid -v               # which version you have
 unbraid --help           # everything
 ```
 
@@ -221,21 +222,39 @@ reproduces your file byte-for-byte. If that check fails, it commits the file who
 
 </details>
 
-### Writing a pull request
+### Opening a pull request
 
-```bash
-unbraid pr               # print a title and description
-unbraid pr --web         # open a prefilled PR page in your browser
-unbraid pr -e --web      # edit it first, then open
-unbraid pr -t dev        # target a different branch
-unbraid pr --open        # create it with the GitHub CLI
-unbraid pr -o pr.md      # save to a file
+Commit on a branch and unbraid asks the obvious next question:
+
+```
+6 commits created.
+
+Open a pull request against main? [Y/n]
 ```
 
-`--web` needs nothing installed — it opens GitHub's own "New pull request" page with the fields
-filled in. If your branch isn't pushed, unbraid offers to push it first, and it catches the
-quieter case too: a branch that *is* pushed but has newer local commits, which would otherwise
-produce a PR missing your latest work.
+Say yes and it writes the title and description, pushes if it needs to, and opens the page.
+No second command, no re-typing the base branch.
+
+It only asks when the answer could be yes — you're on a branch, not on `main`, the remote is
+GitHub, and no pull request is open for the branch already. If one is, it says so and prints
+the link, since pushing is all that's left to do. Turn the question off for good with
+`pr.offerAfterCommit: false`.
+
+Or run it yourself, any time:
+
+```bash
+unbraid pr               # write it and open the PR page
+unbraid pr --draft       # just print the title and description
+unbraid pr -e            # edit it first, then open
+unbraid pr -t dev        # target a different branch
+unbraid pr --open        # create it with the GitHub CLI instead
+unbraid pr -o pr.md      # save it to a file
+```
+
+The default needs nothing installed — it opens GitHub's own "New pull request" page with the
+fields filled in, using the browser session you already have. If your branch isn't pushed,
+unbraid offers to push it first, and it catches the quieter case too: a branch that *is* pushed
+but has newer local commits, which would otherwise produce a PR missing your latest work.
 
 It describes **your** branch, not branches you merged in. Merge `dev` into yours and those
 commits stay out of the description — a branch with two commits of its own reads as two, not
@@ -469,6 +488,7 @@ execute:
 
 pr:
   target: null              # null detects it: origin/HEAD, then main, master, develop
+  offerAfterCommit: true    # after committing on a branch, offer to open a PR
 
 guard:
   secrets: true             # stop before sending credential-like files to a cloud provider
@@ -525,7 +545,12 @@ Every part works without the interactive screen:
 unbraid plan -o plan.json     # work out the commits, change nothing
 $EDITOR plan.json             # edit by hand
 unbraid apply --plan plan.json
+
+unbraid pr --draft            # the PR text on stdout, nothing opened
 ```
+
+Nothing opens a browser or asks a question when there's no terminal attached, so the same
+commands are safe in a script or a CI job.
 
 ## Staying up to date
 

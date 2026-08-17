@@ -84,6 +84,33 @@ export async function resolveBaseBranch(
   )
 }
 
+/** The names of the configured remotes, e.g. ['origin', 'upstream']. */
+export async function remoteNames(git: Git): Promise<string[]> {
+  const result = await git.runRaw(['remote'])
+  if (result.code !== 0) return []
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
+/**
+ * Turn a remote-tracking ref into the branch name the host knows it by.
+ *
+ * Base detection deliberately resolves to `origin/master`: that is the ref
+ * worth diffing against, since a local `master` is often days stale. GitHub has
+ * no branch by that name, though — a compare URL or a `gh --base` built from it
+ * points at nothing. The two uses need different strings, so the ref stays as
+ * it is for comparing and passes through here for anything the host will read.
+ */
+export function stripRemotePrefix(ref: string, remotes: string[]): string {
+  for (const remote of remotes) {
+    const prefix = `${remote}/`
+    if (ref.startsWith(prefix)) return ref.slice(prefix.length)
+  }
+  return ref
+}
+
 async function refExists(git: Git, ref: string): Promise<boolean> {
   const result = await git.runRaw(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
   return result.code === 0
@@ -96,6 +123,17 @@ async function refExists(git: Git, ref: string): Promise<boolean> {
  * landed on the base since this branch started do not appear as this branch's
  * work.
  */
+/**
+ * The branch HEAD points at, or null when HEAD is detached.
+ *
+ * Null rather than a throw: callers that only want to know whether there is a
+ * branch to work with should not have to catch to find out.
+ */
+export async function currentBranch(git: Git): Promise<string | null> {
+  const result = await git.runRaw(['symbolic-ref', '--short', '--quiet', 'HEAD'])
+  return result.code === 0 ? result.stdout.trim() : null
+}
+
 export async function summarizeBranch(
   git: Git,
   base: string,
