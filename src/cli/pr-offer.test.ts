@@ -48,6 +48,15 @@ describe('shouldOfferPr', () => {
     expect(reasonFor({ branch: 'main', base: 'main' })).toBe('on-base-branch')
   })
 
+  // The base arrives from detection as `origin/main`. Compared unstripped
+  // against a checked-out `main` it never matches, and unbraid offers a pull
+  // request from the base branch into itself — so the caller must strip it, and
+  // the stripped form is what this function is specified against.
+  it('recognises the base by its plain name', () => {
+    expect(reasonFor({ branch: 'main', base: 'origin/main' })).not.toBe('on-base-branch')
+    expect(reasonFor({ branch: 'main', base: 'main' })).toBe('on-base-branch')
+  })
+
   it('stays quiet without a remote', () => {
     expect(reasonFor({ remoteHost: null })).toBe('no-remote')
   })

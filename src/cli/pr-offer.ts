@@ -1,6 +1,11 @@
 import { spawn } from 'node:child_process'
 import type { Git } from '../core/git/exec.js'
-import { currentBranch, resolveBaseBranch } from '../core/git/branch.js'
+import {
+  currentBranch,
+  resolveBaseBranch,
+  remoteNames,
+  stripRemotePrefix,
+} from '../core/git/branch.js'
 import { readRemote, isGitHub } from '../core/git/remote.js'
 
 /**
@@ -193,7 +198,14 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
   // a reason to stay silent — `unbraid pr` asks the same question later.
   let base: string | null = null
   try {
-    base = await resolveBaseBranch(options.git, options.target)
+    // Stripped, because both uses here are about the branch as a name: what to
+    // say in the question, and whether it is the branch already checked out.
+    // Comparing `master` against an unstripped `origin/master` never matches,
+    // which would offer a pull request from the base branch into itself.
+    base = stripRemotePrefix(
+      await resolveBaseBranch(options.git, options.target),
+      await remoteNames(options.git),
+    )
   } catch {
     base = null
   }
