@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createSpinner, formatElapsed, frameAt, renderLine } from './spinner.js'
 
 /** Collects writes so output can be asserted without a terminal. */
@@ -117,5 +117,76 @@ describe('createSpinner without a TTY', () => {
     const output = writes.join('')
     expect(output).toBe('Grouping\nWriting\nFinished\n')
     expect(output).not.toContain('\u001b')
+  })
+})
+
+/**
+ * Reported from a real run: the review screen appeared with a spinner still
+ * ticking over it — "Reading 3 files and writing messages 1m 03s" painted on
+ * top of the plan, with the keyboard prompt buried underneath.
+ *
+ * Each phase calls start(), and start() used to add an interval without
+ * clearing the previous one. stop() only ever cleared the newest, so every
+ * earlier phase left an animation running for the life of the process.
+ */
+describe('restarting', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('leaves nothing running after a stop, however many phases ran', () => {
+    vi.useFakeTimers()
+    const { writes, stream } = fakeStream(true)
+    const spinner = createSpinner({ stream, animate: true, intervalMs: 10 })
+
+    spinner.start('Reading your working tree')
+    vi.advanceTimersByTime(50)
+    spinner.start('Reading what changed')
+    vi.advanceTimersByTime(50)
+    spinner.start('Writing commit messages')
+    vi.advanceTimersByTime(50)
+
+    spinner.stop()
+    const afterStop = writes.length
+    vi.advanceTimersByTime(1000)
+
+    expect(writes.length).toBe(afterStop)
+  })
+
+  it('paints one line per tick, not one per phase started', () => {
+    vi.useFakeTimers()
+    const { writes, stream } = fakeStream(true)
+    const spinner = createSpinner({ stream, animate: true, intervalMs: 10 })
+
+    spinner.start('one')
+    spinner.start('two')
+    spinner.start('three')
+    writes.length = 0
+
+    vi.advanceTimersByTime(10)
+    // One clear plus one line. Three overlapping timers produced six.
+    expect(writes.length).toBe(2)
+    expect(writes.join('')).toContain('three')
+    expect(writes.join('')).not.toContain('one')
+
+    spinner.stop()
+  })
+
+  it('restarts the elapsed clock for each phase', () => {
+    let clock = 0
+    const { writes, stream } = fakeStream(true)
+    const spinner = createSpinner({
+      stream,
+      animate: true,
+      intervalMs: 10_000,
+      now: () => clock,
+    })
+
+    spinner.start('first')
+    clock = 5_000
+    spinner.start('second')
+
+    expect(writes.join('')).toContain('second 0s')
+    spinner.stop()
   })
 })
