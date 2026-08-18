@@ -3,8 +3,12 @@ import {
   resolveBaseBranch,
   summarizeBranch,
   extractTicket,
+  remoteNames,
+  stripRemotePrefix,
   BranchError,
 } from './branch.js'
+import { planCompareUrl } from '../engine/pr-url.js'
+import { readRemote } from './remote.js'
 import { createTempRepo, type TempRepo } from './test-helpers.js'
 
 let repo: TempRepo
@@ -140,5 +144,74 @@ describe('extractTicket', () => {
 
   it('ignores an invalid pattern instead of crashing', () => {
     expect(extractTicket('feature/x', '([unclosed')).toBeNull()
+  })
+})
+
+/**
+ * The bug this covers: base detection returns `origin/master`, which is the
+ * right ref to diff against and the wrong name to hand GitHub. The compare page
+ * opened at `compare/origin/master...branch` and showed nothing.
+ */
+describe('the base branch a host is told about', () => {
+  async function withTrackingBase(): Promise<TempRepo> {
+    const r = await createTempRepo()
+    await r.git.run([
+      'remote',
+      'add',
+      'origin',
+      'git@github.com:acme/widgets.git',
+    ])
+    // Stand in for a fetched remote-tracking branch, and for the origin/HEAD
+    // symref `git clone` leaves behind — both without needing a network.
+    await r.git.run(['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+    await r.git.run([
+      'symbolic-ref',
+      'refs/remotes/origin/HEAD',
+      'refs/remotes/origin/main',
+    ])
+    await r.git.run(['checkout', '-b', 'fix/thing'])
+
+    await r.write('a.ts', 'export const a = 1\n')
+    await r.stage()
+    await r.commit('fix: a thing')
+
+    return r
+  }
+
+  it('detects the tracking ref, because that is what to compare against', async () => {
+    repo = await withTrackingBase()
+    expect(await resolveBaseBranch(repo.git)).toBe('origin/main')
+  })
+
+  it('lists the repository remotes', async () => {
+    repo = await withTrackingBase()
+    expect(await remoteNames(repo.git)).toEqual(['origin'])
+  })
+
+  it('builds the compare URL from the branch name GitHub has', async () => {
+    repo = await withTrackingBase()
+
+    const base = await resolveBaseBranch(repo.git)
+    const baseBranch = stripRemotePrefix(base, await remoteNames(repo.git))
+    const remote = await readRemote(repo.git)
+
+    const { url } = planCompareUrl({
+      remote: remote!,
+      target: baseBranch,
+      head: 'fix/thing',
+      title: 'Fix a thing',
+      body: 'body',
+    })
+
+    expect(url).toContain('/compare/main...fix/thing')
+    expect(url).not.toContain('origin/main...')
+  })
+
+  it('still diffs against the tracking ref, not a stale local branch', async () => {
+    repo = await withTrackingBase()
+    const summary = await summarizeBranch(repo.git, await resolveBaseBranch(repo.git))
+
+    expect(summary.base).toBe('origin/main')
+    expect(summary.commits).toHaveLength(1)
   })
 })

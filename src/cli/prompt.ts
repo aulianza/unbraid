@@ -1,3 +1,5 @@
+import { createInterface } from 'node:readline/promises'
+
 /**
  * Interactive prompts for the setup wizard.
  *
@@ -83,4 +85,24 @@ export function renderSelect(
 /** How many terminal lines a rendered list occupies, for redrawing in place. */
 export function selectHeight(options: SelectOption[]): number {
   return options.reduce((total, option) => total + (option.hint ? 2 : 1), 0)
+}
+
+/**
+ * A yes/no question.
+ *
+ * The default is No unless stated otherwise, and non-interactive input takes
+ * the default without asking. For anything consequential — creating commits,
+ * sending credential-shaped files to a third party — keep the default of No.
+ */
+export async function confirm(question: string, defaultYes = false): Promise<boolean> {
+  if (!process.stdin.isTTY) return defaultYes
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const suffix = defaultYes ? '[Y/n]' : '[y/N]'
+    const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase()
+    if (answer === '') return defaultYes
+    return answer === 'y' || answer === 'yes'
+  } finally {
+    rl.close()
+  }
 }

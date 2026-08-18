@@ -186,6 +186,42 @@ describe('commander option scoping', () => {
   })
 })
 
+// `-V` is commander's default and nobody types it. The flags string is the
+// only thing that moves it to `-v`, and a later option claiming `-v` would take
+// it back silently.
+describe('version flag', () => {
+  const parse = async (argv: string[]) => {
+    const { Command } = await import('commander')
+    const program = new Command()
+    let printed = ''
+
+    program
+      .name('unbraid')
+      .version('9.9.9', '-v, --version', 'print the version and exit')
+      .exitOverride()
+      .configureOutput({ writeOut: (str) => (printed += str) })
+
+    try {
+      await program.parseAsync(['node', 'unbraid', ...argv])
+    } catch {
+      // commander throws to stop the process after printing the version.
+    }
+    return printed.trim()
+  }
+
+  it('prints the version for -v', async () => {
+    expect(await parse(['-v'])).toBe('9.9.9')
+  })
+
+  it('prints the version for --version', async () => {
+    expect(await parse(['--version'])).toBe('9.9.9')
+  })
+
+  it('no longer answers to commander default -V', async () => {
+    expect(await parse(['-V'])).toBe('')
+  })
+})
+
 describe('browserCommand', () => {
   it.each([
     ['darwin', 'open'],
