@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   decideNextStep,
+  completeOffer,
   parsePrView,
   startOffer,
   renderNextStepSummary,
   type OfferInput,
   type OfferContext,
+  type OfferFacts,
 } from './pr-offer.js'
 import { decidePrMode } from './pr-command.js'
 import { stripRemotePrefix } from '../core/git/branch.js'
@@ -227,10 +229,10 @@ describe('startOffer', () => {
   it('never rejects, so a failed check cannot fail the commit run', async () => {
     // git is null, so anything that touches it throws.
     const pending = startOffer({ ...options, enabled: true })
-    const context = await pending.result
+    const facts = await pending.result
 
-    expect(context.step).toEqual({ action: 'none', reason: 'unavailable' })
-    expect(context.ghReady).toBe(false)
+    expect(facts.skip).toBe('unavailable')
+    expect(facts.ghReady).toBe(false)
   })
 })
 
@@ -242,6 +244,7 @@ describe('renderNextStepSummary', () => {
   const plain = { dim: (t: string) => t, bold: (t: string) => t }
 
   const context = (over: Partial<OfferContext> = {}): OfferContext => ({
+    skip: null,
     step: { action: 'open-pr' },
     branch: 'fix/public-web-audit',
     base: 'master',
@@ -299,5 +302,68 @@ describe('renderNextStepSummary', () => {
     expect(summary).toContain('fix/public-web-audit')
     expect(summary).not.toContain('undefined')
     expect(summary).not.toContain('null')
+  })
+})
+
+/**
+ * Reported from a real run, on a branch with pull request #786 open:
+ *
+ *   1 commits created.
+ *   Pull request #786 already has these commits.
+ *
+ * It did not. The facts are gathered before the commits are made — that is what
+ * makes the question appear instantly — and the ahead count was read there too,
+ * while the branch was still level with its remote. Everything else about the
+ * branch survives committing; that one number does not.
+ */
+describe('measuring the branch after the commits, not before', () => {
+  const facts: OfferFacts = {
+    skip: null,
+    branch: 'fix/public-web-audit',
+    base: 'master',
+    existingPr: { url: 'https://github.com/acme/storefront/pull/786', number: 786 },
+    remote: { host: 'github.com', owner: 'acme', repo: 'storefront' },
+    ghReady: true,
+  }
+
+  const gate = { enabled: true, interactive: true, unattended: false }
+
+  it('offers the push once the new commit is counted', () => {
+    const context = completeOffer(
+      facts,
+      { upstream: 'origin/fix/public-web-audit', ahead: 1, behind: 0 },
+      gate,
+    )
+
+    expect(context.step).toMatchObject({ action: 'push' })
+  })
+
+  it('stays quiet only when the branch really is level', () => {
+    const context = completeOffer(
+      facts,
+      { upstream: 'origin/fix/public-web-audit', ahead: 0, behind: 0 },
+      gate,
+    )
+
+    expect(context.step).toEqual({ action: 'none', reason: 'already-open' })
+  })
+
+  it('offers the push when the upstream could not be read', () => {
+    expect(completeOffer(facts, null, gate).step).toMatchObject({ action: 'push' })
+  })
+
+  it('carries an early skip through untouched', () => {
+    const context = completeOffer({ ...facts, skip: 'not-github' }, null, gate)
+    expect(context.step).toEqual({ action: 'none', reason: 'not-github' })
+  })
+
+  it('opens a pull request when none exists, however far ahead', () => {
+    const context = completeOffer(
+      { ...facts, existingPr: null },
+      { upstream: 'origin/fix/public-web-audit', ahead: 4, behind: 0 },
+      gate,
+    )
+
+    expect(context.step).toEqual({ action: 'open-pr' })
   })
 })
