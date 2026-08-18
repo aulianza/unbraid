@@ -1,6 +1,6 @@
 {
   "name": "unbraid",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Unbraid a tangled working tree into atomic commits, with AI-written messages.",
   "keywords": [
     "git",
