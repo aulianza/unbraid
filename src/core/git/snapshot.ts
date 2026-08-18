@@ -1,5 +1,4 @@
-import type { Git } from './exec.js'
-import { splitNul } from './exec.js'
+import { GitError, splitNul, type Git } from './exec.js'
 
 export interface Snapshot {
   /** HEAD at the time of the snapshot; `null` on an unborn branch. */
@@ -72,6 +71,52 @@ export async function stageInBatches(
   for (let i = 0; i < paths.length; i += batchSize) {
     const batch = paths.slice(i, i + batchSize)
     // -A so that deletions are staged as deletions rather than skipped.
-    await git.run(['add', '-A', '--', ...batch])
+    const result = await git.runRaw(['add', '-A', '--', ...batch])
+    if (result.code === 0) continue
+
+    if (!mentionsIgnoredPath(result.stderr)) {
+      throw new GitError(
+        `git add -A failed (exit ${result.code}): ${result.stderr.trim()}`,
+        ['add', '-A', '--', ...batch],
+        result.code,
+        result.stderr,
+      )
+    }
+
+    // git refuses the whole batch when any path in it is ignored, so nothing
+    // was staged. Retry one at a time to separate the ignored paths out.
+    for (const path of batch) {
+      const single = await git.runRaw(['add', '-A', '--', path])
+      if (single.code === 0) continue
+      if (!mentionsIgnoredPath(single.stderr)) {
+        throw new GitError(
+          `git add -A failed (exit ${single.code}): ${single.stderr.trim()}`,
+          ['add', '-A', '--', path],
+          single.code,
+          single.stderr,
+        )
+      }
+      await removeFromIndex(git, path)
+    }
   }
+}
+
+function mentionsIgnoredPath(stderr: string): boolean {
+  return /ignored by one of your \.gitignore files/.test(stderr)
+}
+
+/**
+ * Record that a path leaves the index while staying on disk.
+ *
+ * This is the one change `git add` cannot express. A file removed from tracking
+ * with `git rm --cached` and then covered by .gitignore is still sitting in the
+ * working tree, so `add` sees an ignored file and refuses rather than seeing a
+ * deletion — which is what the index already says it is. Ignoring a directory
+ * that was previously committed is the ordinary way to arrive here.
+ *
+ * --ignore-unmatch so that a path already absent from the index is not an
+ * error: the caller wants it gone, and it is.
+ */
+async function removeFromIndex(git: Git, path: string): Promise<void> {
+  await git.run(['rm', '--cached', '--quiet', '--ignore-unmatch', '--', path])
 }
