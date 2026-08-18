@@ -5,8 +5,10 @@ import {
   resolveBaseBranch,
   remoteNames,
   stripRemotePrefix,
+  upstreamStatus,
+  type UpstreamStatus,
 } from '../core/git/branch.js'
-import { readRemote, isGitHub } from '../core/git/remote.js'
+import { readRemote, isGitHub, type Remote } from '../core/git/remote.js'
 
 /**
  * Whether to offer a pull request once the commits have landed.
@@ -32,9 +34,12 @@ export type SkipReason =
   /** Something went wrong working it out. Never a reason to fail the run. */
   | 'unavailable'
 
-export type OfferDecision =
-  | { offer: true }
-  | { offer: false; reason: SkipReason }
+export type NextStep =
+  /** No pull request for this branch yet. Write one and open it. */
+  | { action: 'open-pr' }
+  /** One is already open. The commits reach it by being pushed. */
+  | { action: 'push'; pr: ExistingPr }
+  | { action: 'none'; reason: SkipReason }
 
 export interface OfferInput {
   /** config.pr.offerAfterCommit */
@@ -50,30 +55,46 @@ export interface OfferInput {
   /** Null when there is no origin remote. */
   remoteHost: string | null
   isGitHub: boolean
-  /** URL of a pull request that already exists for this branch. */
-  existingPr: string | null
+  /** A pull request that already exists for this branch. */
+  existingPr: ExistingPr | null
+  /** False when the branch has never been pushed. */
+  hasUpstream: boolean
+  /** Local commits the remote does not have. */
+  ahead: number
 }
 
-export function shouldOfferPr(input: OfferInput): OfferDecision {
-  if (!input.enabled) return { offer: false, reason: 'disabled' }
-  if (input.unattended) return { offer: false, reason: 'unattended' }
-  if (!input.interactive) return { offer: false, reason: 'not-interactive' }
-  if (input.branch === null) return { offer: false, reason: 'detached' }
+/**
+ * What to offer once the commits exist.
+ *
+ * An open pull request used to end the conversation: unbraid printed the link
+ * and stopped, leaving the reason you were told about it — the commits are not
+ * on it yet — as your problem. Pushing is the step that finishes the job, so it
+ * is the step to offer.
+ */
+export function decideNextStep(input: OfferInput): NextStep {
+  const none = (reason: SkipReason): NextStep => ({ action: 'none', reason })
+
+  if (!input.enabled) return none('disabled')
+  if (input.unattended) return none('unattended')
+  if (!input.interactive) return none('not-interactive')
+  if (input.branch === null) return none('detached')
 
   // Nothing to open: a pull request from a branch into itself is not a thing,
   // and committing straight to main is a normal way to work.
   if (input.base !== null && input.branch === input.base) {
-    return { offer: false, reason: 'on-base-branch' }
+    return none('on-base-branch')
   }
 
-  if (input.remoteHost === null) return { offer: false, reason: 'no-remote' }
-  if (!input.isGitHub) return { offer: false, reason: 'not-github' }
+  if (input.remoteHost === null) return none('no-remote')
+  if (!input.isGitHub) return none('not-github')
 
-  // Already open: the new commits appear on it as soon as they are pushed, so
-  // there is nothing to create.
-  if (input.existingPr !== null) return { offer: false, reason: 'already-open' }
+  if (input.existingPr !== null) {
+    // Nothing to send: the pull request already has every commit.
+    if (input.hasUpstream && input.ahead === 0) return none('already-open')
+    return { action: 'push', pr: input.existingPr }
+  }
 
-  return { offer: true }
+  return { action: 'open-pr' }
 }
 
 /**
@@ -196,10 +217,12 @@ export interface GatherOptions {
 }
 
 export interface OfferContext {
-  decision: OfferDecision
+  step: NextStep
   branch: string | null
   base: string | null
   existingPr: ExistingPr | null
+  remote: Remote | null
+  upstream: UpstreamStatus | null
   /** Whether `gh` can create the pull request outright. */
   ghReady: boolean
 }
@@ -214,10 +237,12 @@ export interface OfferContext {
  */
 export async function gatherOffer(options: GatherOptions): Promise<OfferContext> {
   const bail = (reason: SkipReason): OfferContext => ({
-    decision: { offer: false, reason },
+    step: { action: 'none', reason },
     branch: null,
     base: null,
     existingPr: null,
+    remote: null,
+    upstream: null,
     ghReady: false,
   })
 
@@ -230,7 +255,9 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
 
   const remote = await readRemote(options.git)
   if (!remote) return { ...bail('no-remote'), branch }
-  if (!isGitHub(remote)) return { ...bail('not-github'), branch }
+  if (!isGitHub(remote)) return { ...bail('not-github'), branch, remote }
+
+  const upstream = await upstreamStatus(options.git)
 
   // Detection can fail in a repository with no obvious main branch. That is not
   // a reason to stay silent — `unbraid pr` asks the same question later.
@@ -257,7 +284,7 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
   ])
 
   return {
-    decision: shouldOfferPr({
+    step: decideNextStep({
       enabled: options.enabled,
       interactive: options.interactive,
       unattended: options.unattended,
@@ -265,11 +292,15 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
       base,
       remoteHost: remote.host,
       isGitHub: true,
-      existingPr: existingPr?.url ?? null,
+      existingPr,
+      hasUpstream: upstream.upstream !== null,
+      ahead: upstream.ahead,
     }),
     branch,
     base,
     existingPr,
+    remote,
+    upstream,
     ghReady,
   }
 }
@@ -294,10 +325,12 @@ export function startOffer(options: GatherOptions): PendingOffer {
   const result = gatherOffer(options)
     .catch(
       (): OfferContext => ({
-        decision: { offer: false, reason: 'unavailable' },
+        step: { action: 'none', reason: 'unavailable' },
         branch: null,
         base: null,
         existingPr: null,
+        remote: null,
+        upstream: null,
         ghReady: false,
       }),
     )
@@ -307,4 +340,60 @@ export function startOffer(options: GatherOptions): PendingOffer {
     })
 
   return { result, settled: () => settled }
+}
+
+export interface SummaryPaint {
+  dim: (s: string) => string
+  bold: (s: string) => string
+}
+
+/**
+ * Say exactly what is about to happen, before asking whether to do it.
+ *
+ * Pushing and opening a pull request are the two things in this tool that other
+ * people see. "Open a pull request?" on its own does not say from which branch,
+ * into which branch, or to whose repository — and the wrong answer to any of
+ * those is public. Every value here is one the run has already resolved, so
+ * printing them costs nothing and removes the guesswork.
+ */
+export function renderNextStepSummary(
+  context: OfferContext,
+  paint: SummaryPaint,
+): string {
+  const rows: Array<[string, string]> = []
+
+  if (context.branch) rows.push(['Branch', context.branch])
+
+  if (context.remote) {
+    const { host, owner, repo } = context.remote
+    rows.push(['Repository', `${owner}/${repo} on ${host}`])
+  }
+
+  if (context.upstream) {
+    const { upstream, ahead } = context.upstream
+    rows.push([
+      'Pushing',
+      upstream === null
+        ? 'creates the remote branch — it has never been pushed'
+        : `${plural(ahead, 'commit')} to ${upstream}`,
+    ])
+  }
+
+  if (context.step.action === 'push') {
+    rows.push(['Updates', `pull request #${context.step.pr.number}`])
+    rows.push(['', context.step.pr.url])
+  } else if (context.step.action === 'open-pr' && context.base) {
+    rows.push(['Opens', `a pull request into ${context.base}`])
+  }
+
+  const width = Math.max(...rows.map(([label]) => label.length))
+  return rows
+    .map(([label, value]) =>
+      paint.dim(`  ${label.padEnd(width)}  `) + (label ? value : paint.dim(value)),
+    )
+    .join('\n')
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
 }

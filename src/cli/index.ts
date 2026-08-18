@@ -10,9 +10,14 @@ import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
 import { checkForUpdate } from './update-check.js'
-import { BranchError } from '../core/git/branch.js'
+import { BranchError, pushBranch } from '../core/git/branch.js'
 import { runPr, type PrFlags } from './pr-command.js'
-import { startOffer, type PendingOffer } from './pr-offer.js'
+import {
+  startOffer,
+  renderNextStepSummary,
+  type PendingOffer,
+  type OfferContext,
+} from './pr-offer.js'
 import { confirm } from './prompt.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
 import type { Provider } from '../core/providers/types.js'
@@ -227,24 +232,32 @@ async function offerPullRequest(options: {
     const context = await options.pending.result
     spinner.stop()
 
-    if (!context.decision.offer) {
-      // One reason is worth saying out loud rather than staying silent: the
-      // work belongs to a pull request that exists, and pushing is all that is
-      // left to do.
-      if (context.decision.reason === 'already-open' && context.existingPr) {
+    if (context.step.action === 'none') {
+      // Worth saying out loud rather than staying silent: the work is on a
+      // pull request that already has it. Nothing to do, but knowing that
+      // beats wondering why nothing was offered.
+      if (context.step.reason === 'already-open' && context.existingPr) {
         console.log(
-          dim(
-            `\nPull request #${context.existingPr.number} is already open — push to update it.`,
-          ),
+          dim(`\nPull request #${context.existingPr.number} already has these commits.`),
         )
         console.log(dim(`  ${context.existingPr.url}`))
       }
       return
     }
 
+    // Say what is about to happen before asking whether to do it. Both actions
+    // are visible to other people, and neither question names the branches on
+    // its own.
     console.log('')
-    const target = context.base ? ` against ${context.base}` : ''
-    if (!(await confirm(`Open a pull request${target}?`, true))) {
+    console.log(renderNextStepSummary(context, { dim, bold }))
+    console.log('')
+
+    if (context.step.action === 'push') {
+      await offerPush(context, options.config, options.cwd)
+      return
+    }
+
+    if (!(await confirm('Open this pull request?', true))) {
       console.log(dim('Not now. Run `unbraid pr` whenever you are ready.'))
       return
     }
@@ -266,11 +279,48 @@ async function offerPullRequest(options: {
     spinner.stop()
     console.error(
       yellow(
-        `\nCould not draft the pull request: ${error instanceof Error ? error.message : String(error)}`,
+        `\nCould not finish: ${error instanceof Error ? error.message : String(error)}`,
       ),
     )
     console.error(dim('Your commits are safe. Run `unbraid pr` to try again.'))
   }
+}
+
+/**
+ * The branch has an open pull request, so pushing is what puts the new commits
+ * on it. No model call and no draft — just the one thing left to do.
+ */
+async function offerPush(
+  context: OfferContext,
+  config: Config,
+  cwd: string,
+): Promise<void> {
+  if (context.step.action !== 'push' || context.branch === null) return
+
+  const target =
+    context.upstream?.upstream ?? `${config.execute.pushRemote}/${context.branch}`
+
+  if (!(await confirm(`Push to ${target}?`, true))) {
+    console.log(dim('Not now. Push whenever you are ready.'))
+    return
+  }
+
+  const spinner = createSpinner()
+  spinner.start(dim(`Pushing to ${target}`))
+  try {
+    await pushBranch(
+      createGit(cwd),
+      config.execute.pushRemote,
+      context.branch,
+      context.upstream?.upstream === null,
+    )
+  } finally {
+    spinner.stop()
+  }
+
+  console.log(green(`✓ Pushed to ${target}`))
+  console.log(dim(`  Pull request #${context.step.pr.number} is up to date.`))
+  console.log(dim(`  ${context.step.pr.url}`))
 }
 
 /** Shared: build a plan, showing progress and running the credential guard. */

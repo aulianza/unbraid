@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { shouldOfferPr, parsePrView, startOffer, type OfferInput } from './pr-offer.js'
+import {
+  decideNextStep,
+  parsePrView,
+  startOffer,
+  renderNextStepSummary,
+  type OfferInput,
+  type OfferContext,
+} from './pr-offer.js'
 import { decidePrMode } from './pr-command.js'
 import { stripRemotePrefix } from '../core/git/branch.js'
+
+const openPr = { url: 'https://github.com/o/r/pull/7', number: 7 }
 
 const ready: OfferInput = {
   enabled: true,
@@ -12,16 +21,18 @@ const ready: OfferInput = {
   remoteHost: 'github.com',
   isGitHub: true,
   existingPr: null,
+  hasUpstream: true,
+  ahead: 2,
 }
 
 const reasonFor = (overrides: Partial<OfferInput>): string | undefined => {
-  const decision = shouldOfferPr({ ...ready, ...overrides })
-  return decision.offer ? undefined : decision.reason
+  const step = decideNextStep({ ...ready, ...overrides })
+  return step.action === 'none' ? step.reason : undefined
 }
 
-describe('shouldOfferPr', () => {
-  it('offers on a feature branch of a GitHub repo', () => {
-    expect(shouldOfferPr(ready)).toEqual({ offer: true })
+describe('decideNextStep', () => {
+  it('opens a pull request on a feature branch of a GitHub repo', () => {
+    expect(decideNextStep(ready)).toEqual({ action: 'open-pr' })
   })
 
   it('respects the config switch', () => {
@@ -65,14 +76,31 @@ describe('shouldOfferPr', () => {
     expect(reasonFor({ remoteHost: 'gitlab.com', isGitHub: false })).toBe('not-github')
   })
 
-  it('stays quiet when a pull request is already open', () => {
-    expect(reasonFor({ existingPr: 'https://github.com/o/r/pull/7' })).toBe('already-open')
+  // Being told a pull request exists, and then nothing, leaves the reason you
+  // were told — the commits are not on it yet — as the user's problem.
+  it('offers a push when a pull request is open and behind', () => {
+    expect(decideNextStep({ ...ready, existingPr: openPr, ahead: 3 })).toEqual({
+      action: 'push',
+      pr: openPr,
+    })
+  })
+
+  it('offers a push for an open pull request on a never-pushed branch', () => {
+    expect(
+      decideNextStep({ ...ready, existingPr: openPr, hasUpstream: false, ahead: 0 }),
+    ).toMatchObject({ action: 'push' })
+  })
+
+  it('stays quiet when the pull request already has every commit', () => {
+    expect(reasonFor({ existingPr: openPr, hasUpstream: true, ahead: 0 })).toBe(
+      'already-open',
+    )
   })
 
   // Detection fails in a repository with no obvious main branch. That is a
   // reason to let `unbraid pr` ask, not a reason to say nothing.
   it('still offers when the base branch could not be detected', () => {
-    expect(shouldOfferPr({ ...ready, base: null })).toEqual({ offer: true })
+    expect(decideNextStep({ ...ready, base: null })).toEqual({ action: 'open-pr' })
   })
 
   // Checked in order so the cheapest, most emphatic "no" wins: someone who
@@ -201,7 +229,75 @@ describe('startOffer', () => {
     const pending = startOffer({ ...options, enabled: true })
     const context = await pending.result
 
-    expect(context.decision).toEqual({ offer: false, reason: 'unavailable' })
+    expect(context.step).toEqual({ action: 'none', reason: 'unavailable' })
     expect(context.ghReady).toBe(false)
+  })
+})
+
+/**
+ * "Open a pull request?" does not say from which branch, into which branch, or
+ * to whose repository — and the wrong answer to any of those is public.
+ */
+describe('renderNextStepSummary', () => {
+  const plain = { dim: (t: string) => t, bold: (t: string) => t }
+
+  const context = (over: Partial<OfferContext> = {}): OfferContext => ({
+    step: { action: 'open-pr' },
+    branch: 'fix/public-web-audit',
+    base: 'master',
+    existingPr: null,
+    remote: { host: 'github.com', owner: 'acme', repo: 'widgets' },
+    upstream: { upstream: 'origin/fix/public-web-audit', ahead: 3, behind: 0 },
+    ghReady: true,
+    ...over,
+  })
+
+  it('names the branch, the repository, and the target', () => {
+    const summary = renderNextStepSummary(context(), plain)
+
+    expect(summary).toContain('fix/public-web-audit')
+    expect(summary).toContain('acme/widgets on github.com')
+    expect(summary).toContain('a pull request into master')
+    expect(summary).toContain('3 commits to origin/fix/public-web-audit')
+  })
+
+  it('says a branch that has never been pushed will be created', () => {
+    const summary = renderNextStepSummary(
+      context({ upstream: { upstream: null, ahead: 0, behind: 0 } }),
+      plain,
+    )
+
+    expect(summary).toContain('never been pushed')
+  })
+
+  it('names the pull request a push would update', () => {
+    const summary = renderNextStepSummary(
+      context({ step: { action: 'push', pr: openPr }, existingPr: openPr }),
+      plain,
+    )
+
+    expect(summary).toContain('pull request #7')
+    expect(summary).toContain('https://github.com/o/r/pull/7')
+    expect(summary).not.toContain('a pull request into')
+  })
+
+  it('says "1 commit", not "1 commits"', () => {
+    const summary = renderNextStepSummary(
+      context({ upstream: { upstream: 'origin/x', ahead: 1, behind: 0 } }),
+      plain,
+    )
+
+    expect(summary).toContain('1 commit to')
+  })
+
+  it('omits what it does not know rather than printing a blank', () => {
+    const summary = renderNextStepSummary(
+      context({ remote: null, upstream: null, base: null }),
+      plain,
+    )
+
+    expect(summary).toContain('fix/public-web-audit')
+    expect(summary).not.toContain('undefined')
+    expect(summary).not.toContain('null')
   })
 })

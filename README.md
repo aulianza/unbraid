@@ -224,24 +224,44 @@ reproduces your file byte-for-byte. If that check fails, it commits the file who
 
 ### Opening a pull request
 
-Commit on a branch and unbraid asks the obvious next question:
+Commit on a branch and unbraid asks the obvious next question — after telling you exactly what
+it's about to do:
 
 ```
 6 commits created.
 
-Open a pull request against main? [Y/n]
+  Branch      fix/public-web-audit
+  Repository  acme/storefront on github.com
+  Pushing     creates the remote branch — it has never been pushed
+  Opens       a pull request into master
+
+Open this pull request? [Y/n]
 ```
 
-Say yes and it writes the title and description, pushes if it needs to, and opens the page.
-No second command, no re-typing the base branch.
+Say yes and it writes the title and description, pushes, and opens the page. No second command,
+no re-typing the base branch.
+
+**If a pull request is already open for the branch**, there's nothing to create — the commits
+just need to get there. So it offers that instead:
+
+```
+  Branch      fix/public-web-audit
+  Repository  acme/storefront on github.com
+  Pushing     3 commits to origin/fix/public-web-audit
+  Updates     pull request #42
+              https://github.com/acme/storefront/pull/42
+
+Push to origin/fix/public-web-audit? [Y/n]
+```
+
+No model call, no draft — just the one step left. And if that pull request already has every
+commit, unbraid says so and asks nothing.
 
 The check runs while your commits are being written, so it costs you nothing: by the time the
 last commit lands, the question is already on screen.
 
-It only asks when the answer could be yes — you're on a branch, not on `main`, the remote is
-GitHub, and no pull request is open for the branch already. If one is, it says so and prints
-the link, since pushing is all that's left to do. Turn the question off for good with
-`pr.offerAfterCommit: false`.
+It only asks when the answer could be yes — you're on a branch, not on `main`, and the remote is
+GitHub. Turn the question off for good with `pr.offerAfterCommit: false`.
 
 Or run it yourself, any time:
 
