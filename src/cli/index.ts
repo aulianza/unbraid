@@ -209,6 +209,36 @@ function fail(error: unknown): never {
 }
 
 /**
+ * End the run.
+ *
+ * A command that has printed its last line should give the shell back. Two
+ * things keep this one alive past that point, and both are deliberate
+ * elsewhere: stdin stays referenced so the questions after the review screen
+ * can be answered, and the update check leaves a request in flight because its
+ * answer is only ever used by the *next* run. Neither is worth waiting on, and
+ * the second cannot reliably be cancelled — an in-progress DNS lookup ignores
+ * the abort signal and can hold the process for a minute or more.
+ *
+ * So the run ends when the work is done. Output is drained first: process.exit
+ * discards writes still queued, which matters the moment stdout is a pipe.
+ */
+async function finish(): Promise<void> {
+  if (process.stdin.isTTY) {
+    process.stdin.pause()
+    process.stdin.unref()
+  }
+
+  await Promise.all([drain(process.stdout), drain(process.stderr)])
+  process.exit(process.exitCode ?? 0)
+}
+
+function drain(stream: NodeJS.WriteStream): Promise<void> {
+  return new Promise((resolve) => {
+    stream.write('', () => resolve())
+  })
+}
+
+/**
  * Once the commits exist, offer to turn them into a pull request.
  *
  * The commits are the work; the pull request is what makes them visible to
@@ -531,6 +561,8 @@ addPlanningOptions(
         await noticeUpdate(config, isOnMachine(provider))
       } catch (error) {
         fail(error)
+      } finally {
+        await finish()
       }
     }),
 )
