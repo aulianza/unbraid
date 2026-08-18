@@ -2,7 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { Command } from 'commander'
 import { loadConfig } from '../core/config/load.js'
-import { createGit, type Git } from '../core/git/exec.js'
+import { createGit } from '../core/git/exec.js'
 import { executePlan, push } from '../core/git/write.js'
 import { readWorkingTree } from '../core/git/read.js'
 import { buildPlan, PipelineError } from './pipeline.js'
@@ -12,9 +12,10 @@ import { createSpinner } from './spinner.js'
 import { checkForUpdate } from './update-check.js'
 import { BranchError } from '../core/git/branch.js'
 import { runPr, type PrFlags } from './pr-command.js'
-import { gatherOffer, isGhReady } from './pr-offer.js'
+import { startOffer, type PendingOffer } from './pr-offer.js'
 import { confirm } from './prompt.js'
 import type { CommitPlan, WorkingTreeState } from '../core/engine/types.js'
+import type { Provider } from '../core/providers/types.js'
 import { providerNameSchema, type Config } from '../core/config/schema.js'
 
 /** Replaced at build time by tsup; see tsup.config.ts. */
@@ -213,19 +214,18 @@ function fail(error: unknown): never {
  */
 async function offerPullRequest(options: {
   cwd: string
-  git: Git
   config: Config
-  unattended: boolean
+  pending: PendingOffer
+  provider: Provider
 }): Promise<void> {
+  const spinner = createSpinner()
+
   try {
-    const context = await gatherOffer({
-      git: options.git,
-      cwd: options.cwd,
-      enabled: options.config.pr.offerAfterCommit,
-      interactive: process.stdin.isTTY === true,
-      unattended: options.unattended,
-      target: options.config.pr.target ?? undefined,
-    })
+    // Normally already finished, having run alongside the commits. The spinner
+    // is for the slow network that is the whole reason this starts early.
+    if (!options.pending.settled()) spinner.start(dim('Checking GitHub'))
+    const context = await options.pending.result
+    spinner.stop()
 
     if (!context.decision.offer) {
       // One reason is worth saying out loud rather than staying silent: the
@@ -250,11 +250,20 @@ async function offerPullRequest(options: {
     }
 
     // `gh` creates the pull request outright. Without it, a prefilled compare
-    // page needs nothing but the browser session the user already has.
-    const flags = (await isGhReady(options.cwd)) ? { open: true } : { web: true }
+    // page needs nothing but the browser session the user already has. Which
+    // one was worked out during the commits, so this costs nothing here.
+    const flags = context.ghReady ? { open: true } : { web: true }
     console.log('')
-    await runPr({ cwd: options.cwd, config: options.config, flags })
+    // The provider is passed along rather than resolved again: it was already
+    // chosen to write the commit messages, and re-resolving spawns a probe.
+    await runPr({
+      cwd: options.cwd,
+      config: options.config,
+      flags,
+      provider: options.provider,
+    })
   } catch (error) {
+    spinner.stop()
     console.error(
       yellow(
         `\nCould not draft the pull request: ${error instanceof Error ? error.message : String(error)}`,
@@ -393,6 +402,18 @@ addPlanningOptions(
           }
         }
 
+        // Started here, not after the commits: these are `gh` round trips of a
+        // few seconds, and after the last commit lands they would be silence in
+        // a terminal that looks finished.
+        const pendingOffer = startOffer({
+          git,
+          cwd,
+          enabled: config.pr.offerAfterCommit,
+          interactive: process.stdin.isTTY === true,
+          unattended: skipReview,
+          target: config.pr.target ?? undefined,
+        })
+
         const result = await executePlan(git, approved, {
           verify: config.execute.verify,
           ...(hunkContext ? { hunkContext } : {}),
@@ -414,7 +435,7 @@ addPlanningOptions(
           console.log(green('Pushed.'))
         }
 
-        await offerPullRequest({ cwd, git, config, unattended: skipReview })
+        await offerPullRequest({ cwd, config, pending: pendingOffer, provider })
         await noticeUpdate(config, isOnMachine(provider))
       } catch (error) {
         fail(error)
