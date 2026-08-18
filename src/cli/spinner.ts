@@ -77,6 +77,14 @@ export function createSpinner(options: SpinnerOptions = {}): Spinner {
 
   return {
     start(initial) {
+      // Clearing first because start is called once per phase now, and each
+      // call used to leave the previous interval running: stop() only ever
+      // clears the newest timer, so the older ones kept painting over whatever
+      // came next — including the full-screen review, which they scribbled
+      // over while its prompt sat underneath.
+      if (timer) clearInterval(timer)
+      timer = null
+
       text = initial
       startedAt = now()
       active = true
