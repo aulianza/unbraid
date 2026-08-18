@@ -14,6 +14,7 @@ import { isCodexCliAvailable } from '../core/providers/codex-cli.js'
 import { resolveProvider } from '../core/providers/resolve.js'
 import { configSchema } from '../core/config/schema.js'
 import { bold, cyan, dim, green, red, yellow } from './render.js'
+import { createSpinner } from './spinner.js'
 import {
   reduceSelect,
   renderSelect,
@@ -333,7 +334,11 @@ export async function runInit(options: InitOptions): Promise<void> {
     console.log(green(`\n✓ Wrote ${target}`))
 
     // 6. Prove it works. This is the part that makes the wizard worth running.
-    console.log(dim('\nTesting the connection…'))
+    // It is also a real model call: with a CLI provider that is a process
+    // starting up, so it needs to look alive rather than finished.
+    console.log('')
+    const spinner = createSpinner()
+    spinner.start(dim('Testing the connection'))
     try {
       const config = configSchema.parse(buildConfig(answers))
       const provider = await resolveProvider(config)
@@ -348,11 +353,13 @@ export async function runInit(options: InitOptions): Promise<void> {
         },
         schemaName: 'health_check',
       })
+      spinner.stop()
       console.log(green(`✓ ${provider.name}/${provider.model} is working`))
       console.log(`\n${bold('Ready.')} Try it out:\n`)
       console.log('  cd your-project')
       console.log('  unbraid --dry-run\n')
     } catch (error) {
+      spinner.stop()
       console.log(red(`✗ Could not reach the provider`))
       console.log(dim(`  ${error instanceof Error ? error.message : String(error)}`))
       console.log(

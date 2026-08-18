@@ -23,6 +23,7 @@ plan.json
 docs/superpowers/
 
 # agent tooling, not part of the package
+.claude/
 .agents/
 skills-lock.json
 

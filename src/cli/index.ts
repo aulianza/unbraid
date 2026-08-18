@@ -285,7 +285,23 @@ async function planWithProgress(cwd: string, config: Config, flags: CommonFlags)
       cwd,
       config,
       force: flags.force,
+      // Every one of these is git work that takes long enough to notice on a
+      // big repository. Before, the first thing on screen was the summary line
+      // below — printed only once all of it had finished.
+      onStage: (stage) => {
+        spinner.start(
+          dim(
+            {
+              reading: 'Reading your working tree',
+              style: 'Reading how this repository writes commits',
+              diffing: 'Reading what changed',
+              hunks: 'Splitting files into hunks',
+            }[stage],
+          ),
+        )
+      },
       onTreeRead: (state, provider, style) => {
+        spinner.stop()
         console.error(
           dim(
             `${state.files.length} changed · ${style.format} style · ${provider.name}/${provider.model}`,
@@ -430,8 +446,13 @@ addPlanningOptions(
         console.log(green(`\n${result.shas.length} commits created.`))
 
         if (config.execute.push) {
-          console.log(dim(`Pushing to ${config.execute.pushRemote}…`))
-          await push(git, { remote: config.execute.pushRemote })
+          const pushSpinner = createSpinner()
+          pushSpinner.start(dim(`Pushing to ${config.execute.pushRemote}`))
+          try {
+            await push(git, { remote: config.execute.pushRemote })
+          } finally {
+            pushSpinner.stop()
+          }
           console.log(green('Pushed.'))
         }
 
