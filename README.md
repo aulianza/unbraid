@@ -303,7 +303,7 @@ Which AI should write your commit messages?
 
 ✓ Wrote .unbraidrc.yaml
 
-Testing the connection…
+⠹ Testing the connection 2s
 ✓ claude-cli/sonnet is working
 ```
 

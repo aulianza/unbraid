@@ -86,6 +86,9 @@ export async function runPr(options: RunPrOptions): Promise<void> {
   const spinner = createSpinner()
 
   try {
+    // Resolving the base and summarising the branch are several git calls, and
+    // on a long branch they are not instant.
+    spinner.start(dim('Reading this branch'))
     const git = createGit(cwd)
     // -t is the documented flag; --base is kept working for anyone who
     // scripted against it before -t existed.
@@ -97,6 +100,7 @@ export async function runPr(options: RunPrOptions): Promise<void> {
     // told the branch name (`master`). Passing the tracking ref to the host
     // builds a compare URL for a branch that does not exist there.
     const baseBranch = stripRemotePrefix(summary.base, await remoteNames(git))
+    spinner.stop()
 
     console.error(
       dim(
@@ -141,7 +145,11 @@ export async function runPr(options: RunPrOptions): Promise<void> {
         console.error(`\n${yellow(reason)}`)
         return confirm(`Push to ${pushTarget}?`, true)
       },
-      onPushed: () => console.error(green('  ✓ pushed')),
+      onPushStart: (pushTarget) => spinner.start(dim(`Pushing to ${pushTarget}`)),
+      onPushed: () => {
+        spinner.stop()
+        console.error(green('  ✓ pushed'))
+      },
     })
     if (!pushed) {
       console.error(dim('Not pushed, so no pull request was opened.'))
@@ -149,6 +157,7 @@ export async function runPr(options: RunPrOptions): Promise<void> {
     }
 
     if (mode === 'web') {
+      spinner.stop()
       await openWebPr({
         git,
         target: baseBranch,
@@ -167,7 +176,14 @@ export async function runPr(options: RunPrOptions): Promise<void> {
       console.error(dim('Not opened.'))
       return
     }
-    await openPullRequest(cwd, baseBranch, draft.title, draft.body)
+    // `gh pr create` is a round trip to the GitHub API, and a slow network
+    // makes it a long one — it is the step most likely to look like a hang.
+    spinner.start(dim('Creating the pull request on GitHub'))
+    try {
+      await openPullRequest(cwd, baseBranch, draft.title, draft.body)
+    } finally {
+      spinner.stop()
+    }
   } finally {
     spinner.stop()
   }

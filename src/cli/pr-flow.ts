@@ -54,6 +54,8 @@ export interface EnsurePushedOptions {
   remote: string
   /** Returns true to proceed with the push. */
   confirm: (reason: string, target: string) => Promise<boolean>
+  /** Called once the push actually starts. It is a network round trip. */
+  onPushStart?: (target: string) => void
   onPushed?: () => void
 }
 
@@ -68,6 +70,7 @@ export async function ensurePushed(
   const target = status.upstream ?? `${options.remote}/${options.branch}`
   if (!(await options.confirm(decision.reason, target))) return false
 
+  options.onPushStart?.(target)
   await pushBranch(options.git, options.remote, options.branch, decision.setUpstream)
   options.onPushed?.()
   return true

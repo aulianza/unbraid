@@ -32,11 +32,30 @@ export class PipelineError extends Error {
   }
 }
 
+/**
+ * The phases before the model is called.
+ *
+ * Each one is git work that takes long enough to notice on a large repository,
+ * and until now they ran with nothing on screen: the first output appeared only
+ * once the tree had been read, the style inferred, and a provider probed.
+ */
+export type PipelineStage =
+  /** Listing what changed. */
+  | 'reading'
+  /** Reading recent commits and working out which provider to use. */
+  | 'style'
+  /** Collecting the diffs the model will be shown. */
+  | 'diffing'
+  /** Splitting files into hunks. */
+  | 'hunks'
+
 export interface PipelineOptions {
   cwd: string
   config: Config
   force?: boolean
   onEvent?: (event: PlanEvent) => void
+  /** Called as each pre-model phase begins. */
+  onStage?: (stage: PipelineStage) => void
   /** Called after the tree is read but before any model call. */
   onTreeRead?: (state: WorkingTreeState, provider: Provider, style: RepoStyle) => void
   /** Called around the credential prompt so progress UI can be suspended. */
@@ -57,6 +76,7 @@ export async function buildPlan(
   const { cwd, config } = options
   const git = createGit(cwd)
 
+  options.onStage?.('reading')
   const check = await preflight(git, { force: options.force })
   if (!check.ok) {
     throw new PipelineError(check.reasons.join('\n'))
@@ -73,6 +93,7 @@ export async function buildPlan(
     )
   }
 
+  options.onStage?.('style')
   const style = await inferStyle(git, config.context.logSample)
   const provider = await resolveProvider(config)
 
@@ -85,6 +106,7 @@ export async function buildPlan(
     throw new PipelineError('Cancelled.')
   }
 
+  options.onStage?.('diffing')
   const groupingDiffs = await collectDiffs(git, state.files, state.head, {
     truncateLines: config.context.truncateLines,
     maxBytes: config.context.maxDiffBytes,
@@ -102,6 +124,7 @@ export async function buildPlan(
       .map((file) => file.path)
 
     if (candidates.length > 0) {
+      options.onStage?.('hunks')
       hunkContext = await buildHunkContext(git, candidates, state.head)
       if (hunkContext.hunksByPath.size > 0) {
         splittable = new Map(
