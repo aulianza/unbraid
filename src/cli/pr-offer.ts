@@ -5,7 +5,6 @@ import {
   resolveBaseBranch,
   remoteNames,
   stripRemotePrefix,
-  upstreamStatus,
   type UpstreamStatus,
 } from '../core/git/branch.js'
 import { readRemote, isGitHub, type Remote } from '../core/git/remote.js'
@@ -216,15 +215,69 @@ export interface GatherOptions {
   target?: string | undefined
 }
 
-export interface OfferContext {
-  step: NextStep
+/**
+ * What can be worked out before the commits are made.
+ *
+ * Everything here is unchanged by committing — which branch you are on, where
+ * it points, whether a pull request exists — so it is safe to gather early and
+ * overlap with the commits themselves.
+ *
+ * How far ahead of the remote the branch is deliberately is NOT here. That is
+ * the one fact the commits change, and reading it early is how unbraid came to
+ * announce that a pull request already had commits that did not exist yet.
+ */
+export interface OfferFacts {
+  /** Set when the answer is already "ask nothing". */
+  skip: SkipReason | null
   branch: string | null
   base: string | null
   existingPr: ExistingPr | null
   remote: Remote | null
-  upstream: UpstreamStatus | null
   /** Whether `gh` can create the pull request outright. */
   ghReady: boolean
+}
+
+export interface OfferContext extends OfferFacts {
+  step: NextStep
+  upstream: UpstreamStatus | null
+}
+
+export interface OfferGate {
+  enabled: boolean
+  interactive: boolean
+  unattended: boolean
+}
+
+/**
+ * Decide, once the commits exist and the branch has been measured against its
+ * remote.
+ */
+export function completeOffer(
+  facts: OfferFacts,
+  upstream: UpstreamStatus | null,
+  gate: OfferGate,
+): OfferContext {
+  if (facts.skip !== null) {
+    return { ...facts, upstream, step: { action: 'none', reason: facts.skip } }
+  }
+
+  return {
+    ...facts,
+    upstream,
+    step: decideNextStep({
+      ...gate,
+      branch: facts.branch,
+      base: facts.base,
+      remoteHost: facts.remote?.host ?? null,
+      isGitHub: facts.remote !== null,
+      existingPr: facts.existingPr,
+      // A branch whose upstream could not be read is treated as unpushed: the
+      // cost of offering a push that turns out to be unnecessary is one extra
+      // question, against silently withholding the only step that remains.
+      hasUpstream: upstream?.upstream != null,
+      ahead: upstream?.ahead ?? 0,
+    }),
+  }
 }
 
 /**
@@ -235,14 +288,13 @@ export interface OfferContext {
  * anything — which is most runs, since most repositories are not on GitHub or
  * the user passed --yes.
  */
-export async function gatherOffer(options: GatherOptions): Promise<OfferContext> {
-  const bail = (reason: SkipReason): OfferContext => ({
-    step: { action: 'none', reason },
+export async function gatherOffer(options: GatherOptions): Promise<OfferFacts> {
+  const bail = (reason: SkipReason): OfferFacts => ({
+    skip: reason,
     branch: null,
     base: null,
     existingPr: null,
     remote: null,
-    upstream: null,
     ghReady: false,
   })
 
@@ -256,8 +308,6 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
   const remote = await readRemote(options.git)
   if (!remote) return { ...bail('no-remote'), branch }
   if (!isGitHub(remote)) return { ...bail('not-github'), branch, remote }
-
-  const upstream = await upstreamStatus(options.git)
 
   // Detection can fail in a repository with no obvious main branch. That is not
   // a reason to stay silent — `unbraid pr` asks the same question later.
@@ -283,26 +333,7 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
     isGhReady(options.cwd),
   ])
 
-  return {
-    step: decideNextStep({
-      enabled: options.enabled,
-      interactive: options.interactive,
-      unattended: options.unattended,
-      branch,
-      base,
-      remoteHost: remote.host,
-      isGitHub: true,
-      existingPr,
-      hasUpstream: upstream.upstream !== null,
-      ahead: upstream.ahead,
-    }),
-    branch,
-    base,
-    existingPr,
-    remote,
-    upstream,
-    ghReady,
-  }
+  return { skip: null, branch, base, existingPr, remote, ghReady }
 }
 
 /**
@@ -314,7 +345,7 @@ export async function gatherOffer(options: GatherOptions): Promise<OfferContext>
  * terminal — the exact moment a tool feels slowest.
  */
 export interface PendingOffer {
-  result: Promise<OfferContext>
+  result: Promise<OfferFacts>
   /** False while the checks are still running. */
   settled: () => boolean
 }
@@ -324,13 +355,12 @@ export function startOffer(options: GatherOptions): PendingOffer {
 
   const result = gatherOffer(options)
     .catch(
-      (): OfferContext => ({
-        step: { action: 'none', reason: 'unavailable' },
+      (): OfferFacts => ({
+        skip: 'unavailable',
         branch: null,
         base: null,
         existingPr: null,
         remote: null,
-        upstream: null,
         ghReady: false,
       }),
     )

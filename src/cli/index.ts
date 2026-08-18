@@ -2,7 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { Command } from 'commander'
 import { loadConfig } from '../core/config/load.js'
-import { createGit } from '../core/git/exec.js'
+import { createGit, type Git } from '../core/git/exec.js'
 import { executePlan, push } from '../core/git/write.js'
 import { readWorkingTree } from '../core/git/read.js'
 import { buildPlan, PipelineError } from './pipeline.js'
@@ -10,10 +10,11 @@ import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
 import { checkForUpdate } from './update-check.js'
-import { BranchError, pushBranch } from '../core/git/branch.js'
+import { BranchError, pushBranch, upstreamStatus } from '../core/git/branch.js'
 import { runPr, type PrFlags } from './pr-command.js'
 import {
   startOffer,
+  completeOffer,
   renderNextStepSummary,
   type PendingOffer,
   type OfferContext,
@@ -219,9 +220,11 @@ function fail(error: unknown): never {
  */
 async function offerPullRequest(options: {
   cwd: string
+  git: Git
   config: Config
   pending: PendingOffer
   provider: Provider
+  unattended: boolean
 }): Promise<void> {
   const spinner = createSpinner()
 
@@ -229,8 +232,19 @@ async function offerPullRequest(options: {
     // Normally already finished, having run alongside the commits. The spinner
     // is for the slow network that is the whole reason this starts early.
     if (!options.pending.settled()) spinner.start(dim('Checking GitHub'))
-    const context = await options.pending.result
+    const facts = await options.pending.result
     spinner.stop()
+
+    // Measured now, not alongside the commits: this is the one number the
+    // commits change. Reading it early is what made unbraid announce that a
+    // pull request already held commits made a moment later.
+    const upstream = facts.skip === null ? await upstreamStatus(options.git) : null
+
+    const context = completeOffer(facts, upstream, {
+      enabled: options.config.pr.offerAfterCommit,
+      interactive: process.stdin.isTTY === true,
+      unattended: options.unattended,
+    })
 
     if (context.step.action === 'none') {
       // Worth saying out loud rather than staying silent: the work is on a
@@ -506,7 +520,14 @@ addPlanningOptions(
           console.log(green('Pushed.'))
         }
 
-        await offerPullRequest({ cwd, config, pending: pendingOffer, provider })
+        await offerPullRequest({
+          cwd,
+          git,
+          config,
+          pending: pendingOffer,
+          provider,
+          unattended: skipReview,
+        })
         await noticeUpdate(config, isOnMachine(provider))
       } catch (error) {
         fail(error)
