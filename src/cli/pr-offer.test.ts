@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { shouldOfferPr, parsePrView, type OfferInput } from './pr-offer.js'
+import { shouldOfferPr, parsePrView, startOffer, type OfferInput } from './pr-offer.js'
 import { decidePrMode } from './pr-command.js'
 import { stripRemotePrefix } from '../core/git/branch.js'
 
@@ -173,5 +173,35 @@ describe('stripRemotePrefix', () => {
 
   it('changes nothing when there are no remotes', () => {
     expect(stripRemotePrefix('origin/master', [])).toBe('origin/master')
+  })
+})
+
+// The checks are `gh` round trips measured at ~4s each on a normal connection.
+// Run after the last commit lands, they are silence in a terminal that already
+// looks finished — so they start alongside the commits instead.
+describe('startOffer', () => {
+  const options = {
+    git: null as never,
+    cwd: '/nowhere',
+    enabled: false,
+    interactive: true,
+    unattended: false,
+  }
+
+  it('reports whether it has finished yet', async () => {
+    const pending = startOffer(options)
+    expect(pending.settled()).toBe(false)
+
+    await pending.result
+    expect(pending.settled()).toBe(true)
+  })
+
+  it('never rejects, so a failed check cannot fail the commit run', async () => {
+    // git is null, so anything that touches it throws.
+    const pending = startOffer({ ...options, enabled: true })
+    const context = await pending.result
+
+    expect(context.decision).toEqual({ offer: false, reason: 'unavailable' })
+    expect(context.ghReady).toBe(false)
   })
 })

@@ -14,6 +14,7 @@ import { bold, dim, green, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
 import { confirm } from './prompt.js'
 import type { Config } from '../core/config/schema.js'
+import type { Provider } from '../core/providers/types.js'
 
 export interface PrFlags {
   target?: string | undefined
@@ -62,6 +63,14 @@ export interface RunPrOptions {
   flags: PrFlags
   /** Defaults to whether stdin is a terminal. */
   interactive?: boolean
+  /**
+   * An already-resolved provider.
+   *
+   * Resolving spawns a probe for the CLI providers. When the caller has just
+   * used one to write commit messages, that is a second wait for an answer it
+   * already has.
+   */
+  provider?: Provider
 }
 
 /**
@@ -95,7 +104,7 @@ export async function runPr(options: RunPrOptions): Promise<void> {
       ),
     )
 
-    const provider = await resolveProvider(config)
+    const provider = options.provider ?? (await resolveProvider(config))
     spinner.start(dim('Drafting pull request'))
     let draft = await createPrDraft(summary, config, provider)
     spinner.stop()

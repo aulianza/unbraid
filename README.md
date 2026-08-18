@@ -235,6 +235,9 @@ Open a pull request against main? [Y/n]
 Say yes and it writes the title and description, pushes if it needs to, and opens the page.
 No second command, no re-typing the base branch.
 
+The check runs while your commits are being written, so it costs you nothing: by the time the
+last commit lands, the question is already on screen.
+
 It only asks when the answer could be yes — you're on a branch, not on `main`, the remote is
 GitHub, and no pull request is open for the branch already. If one is, it says so and prints
 the link, since pushing is all that's left to do. Turn the question off for good with
