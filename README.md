@@ -295,6 +295,7 @@ A "provider" is whichever AI writes your messages. Two of them cost nothing extr
 | **Codex CLI** | nothing — detected automatically | **free** with your subscription |
 | **Anthropic API** | an API key | per token |
 | **Anything OpenAI-compatible** | a URL, usually a key | varies, or free locally |
+| **Anything Anthropic-compatible** | a URL, usually a key | varies, or free locally |
 
 With `provider: auto`, unbraid prefers the CLIs — they cost nothing beyond what you already
 pay for — then falls back to whichever API key it finds.
@@ -317,7 +318,7 @@ Which AI should write your commit messages?
   ❯ 1. Claude Code — free, no API key, already installed
     2. Codex CLI — free, no API key
     3. Anthropic API
-    4. Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama)
+    4. Something else (OpenAI, OpenRouter, Z.AI, Groq, DeepSeek, Ollama, your own endpoint)
 
   ↑↓ move · 1-9 pick · enter confirm
 
@@ -432,6 +433,50 @@ Quality tracks the model: a small local one writes vaguer messages than a fronti
 
 </details>
 
+<details>
+<summary><b>Your own endpoint</b> — a gateway, a proxy, anything with a URL</summary>
+
+Running through OneRouter, LiteLLM, vLLM, LM Studio, an internal proxy, or anything else with a
+URL? The last two entries in `unbraid init` ask for three things — the endpoint, the model, and
+the key — instead of trying to guess them:
+
+```
+    8. Any OpenAI-compatible endpoint — enter your own URL
+    9. Any Anthropic-compatible endpoint — enter your own URL
+```
+
+Pick by the API the endpoint speaks, not by whose model is behind it. A gateway serving Claude
+over an OpenAI-shaped API is option 8.
+
+```yaml
+# .unbraidrc.yaml — OpenAI-shaped
+provider: openai-compatible
+providers:
+  openai-compatible:
+    baseUrl: https://your-gateway.example.com/v1
+    apiKeyEnv: UNBRAID_API_KEY
+    model: whatever-your-gateway-calls-it
+```
+
+```yaml
+# .unbraidrc.yaml — Anthropic-shaped
+provider: anthropic
+providers:
+  anthropic:
+    baseUrl: https://your-gateway.example.com
+    apiKeyEnv: UNBRAID_API_KEY
+    model: whatever-your-gateway-calls-it
+```
+
+**The two base URLs stop in different places.** unbraid appends `/chat/completions` to the first
+and `/v1/messages` to the second, so the OpenAI form ends at `/v1` and the Anthropic form ends at
+the host. Paste a whole endpoint into either and the wizard trims it for you.
+
+Keys go under `UNBRAID_API_KEY`, not `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — a gateway key is
+neither of those, and filing it under their name would shadow a real one.
+
+</details>
+
 **A note on speed.** The free CLI providers are slower — 10–60 seconds a run, since each starts
 a whole CLI. An API key is noticeably faster. Free-and-slower is the right default for most
 people, but that's the trade.
@@ -467,6 +512,7 @@ providers:
     model: auto             # auto lets codex pick its own
     extraArgs: []
   anthropic:
+    baseUrl: https://api.anthropic.com   # or any host speaking the Messages API
     apiKeyEnv: ANTHROPIC_API_KEY
     model: claude-sonnet-5
   openai-compatible:

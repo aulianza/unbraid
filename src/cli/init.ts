@@ -9,7 +9,32 @@ export interface Preset {
   /** Where to get a key, or null when none is needed. */
   keyUrl: string | null
   note?: string
+  /**
+   * Which API the endpoint speaks.
+   *
+   * Everything here has been OpenAI-shaped until now. An endpoint that speaks
+   * Anthropic's Messages API needs the other provider, and the two are not
+   * interchangeable — the request bodies differ, and so does the path.
+   */
+  api?: 'openai' | 'anthropic'
+  /**
+   * Ask for the endpoint and model rather than filling them in.
+   *
+   * The listed services have one known base URL each. A gateway someone runs
+   * themselves — OneRouter, LiteLLM, vLLM, a company proxy — does not, so the
+   * only useful thing to offer is the three fields it takes.
+   */
+  custom?: boolean
 }
+
+/**
+ * Where a key for a self-entered endpoint is stored.
+ *
+ * Not OPENAI_API_KEY or ANTHROPIC_API_KEY: a gateway key is not one of those,
+ * and writing it under their name would have it picked up by — or quietly
+ * shadow — a real key for the actual service.
+ */
+export const CUSTOM_KEY_ENV = 'UNBRAID_API_KEY'
 
 /**
  * Ready-made settings for the OpenAI-compatible endpoints people actually use.
@@ -80,10 +105,61 @@ export const PRESETS: Preset[] = [
     keyUrl: null,
     note: 'Needs Ollama running locally: `ollama serve` and `ollama pull qwen2.5-coder`.',
   },
+  // Last, because they ask three questions where the others ask none. They are
+  // also the only entries that cover a service nobody has heard of yet.
+  {
+    key: 'custom-openai',
+    label: 'Any OpenAI-compatible endpoint — enter your own URL',
+    baseUrl: '',
+    apiKeyEnv: CUSTOM_KEY_ENV,
+    model: '',
+    keyUrl: null,
+    api: 'openai',
+    custom: true,
+    note: 'For a gateway or proxy: OneRouter, LiteLLM, vLLM, LM Studio, your own.',
+  },
+  {
+    key: 'custom-anthropic',
+    label: 'Any Anthropic-compatible endpoint — enter your own URL',
+    baseUrl: '',
+    apiKeyEnv: CUSTOM_KEY_ENV,
+    model: '',
+    keyUrl: null,
+    api: 'anthropic',
+    custom: true,
+    note: 'For anything speaking Anthropic\'s Messages API rather than OpenAI\'s.',
+  },
 ]
 
 export function findPreset(key: string): Preset | undefined {
   return PRESETS.find((preset) => preset.key === key)
+}
+
+/**
+ * Make a pasted URL into the base URL the provider expects.
+ *
+ * The two APIs want different things, and both are easy to get wrong from the
+ * documentation someone is copying from:
+ *
+ *   - the OpenAI path appends `/chat/completions`, so the base ends at `/v1`
+ *   - the Anthropic path appends `/v1/messages`, so the base ends at the host
+ *
+ * Paste a full endpoint into either and you get `/v1/chat/completions/chat/
+ * completions` or `/v1/v1/messages` — a 404 that reads like a bad key. So the
+ * endpoint suffix is trimmed if it is there, and for Anthropic a trailing `/v1`
+ * as well, since that is the form every Anthropic example shows.
+ */
+export function normalizeBaseUrl(url: string, api: 'openai' | 'anthropic'): string {
+  let trimmed = url.trim().replace(/\/+$/, '')
+
+  if (api === 'openai') {
+    trimmed = trimmed.replace(/\/chat\/completions$/, '')
+  } else {
+    trimmed = trimmed.replace(/\/v1\/messages$/, '').replace(/\/messages$/, '')
+    trimmed = trimmed.replace(/\/v1$/, '')
+  }
+
+  return trimmed
 }
 
 export interface InitAnswers {
@@ -117,7 +193,14 @@ export function buildConfig(answers: InitAnswers): Record<string, unknown> {
     config.providers = { anthropic: { model: answers.anthropicModel } }
   }
 
-  if (answers.provider === 'openai-compatible' && answers.preset) {
+  // A preset that speaks Anthropic's API is served by the anthropic provider,
+  // not the OpenAI-shaped one. The choice of provider follows from the preset
+  // rather than from which question the user answered to reach it.
+  if (answers.preset?.api === 'anthropic') {
+    const { baseUrl, apiKeyEnv, model } = answers.preset
+    config.provider = 'anthropic'
+    config.providers = { anthropic: { baseUrl, apiKeyEnv, model } }
+  } else if (answers.provider === 'openai-compatible' && answers.preset) {
     const { baseUrl, apiKeyEnv, model } = answers.preset
     config.providers = { 'openai-compatible': { baseUrl, apiKeyEnv, model } }
   }

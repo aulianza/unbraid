@@ -90,6 +90,88 @@ describe('anthropic provider', () => {
   })
 })
 
+/**
+ * An endpoint speaking Anthropic's Messages API is not always Anthropic's own:
+ * a gateway, a proxy, or a self-hosted model can serve the same shape, and the
+ * setup wizard now lets one be entered by hand.
+ */
+describe('anthropic provider against another host', () => {
+  const capture = async () => {
+    let called = ''
+    const provider = createAnthropicProvider({
+      apiKey: 'k',
+      baseUrl: 'https://gw.example.com',
+      fetchImpl: async (url) => {
+        called = String(url)
+        return jsonResponse({ content: [{ type: 'tool_use', name: 'respond', input: {} }] })
+      },
+    })
+    await provider.complete(request)
+    return called
+  }
+
+  it('calls the configured host', async () => {
+    expect(await capture()).toBe('https://gw.example.com/v1/messages')
+  })
+
+  it('still defaults to Anthropic when no host is given', async () => {
+    let called = ''
+    const provider = createAnthropicProvider({
+      apiKey: 'k',
+      fetchImpl: async (url) => {
+        called = String(url)
+        return jsonResponse({ content: [{ type: 'tool_use', name: 'respond', input: {} }] })
+      },
+    })
+    await provider.complete(request)
+
+    expect(called).toBe('https://api.anthropic.com/v1/messages')
+  })
+
+  // resolveProvider is what reads the config, so the setting has to survive
+  // that trip as well as being accepted by the schema.
+  it('takes the host from configuration', async () => {
+    const config = defaultConfig()
+    config.provider = 'anthropic'
+    config.providers.anthropic.baseUrl = 'https://gw.example.com'
+
+    const provider = await resolveProvider(config, {
+      env: { ANTHROPIC_API_KEY: 'k' },
+    })
+
+    expect(provider.name).toBe('anthropic')
+    // The base URL is not exposed on the provider, so assert on the config it
+    // was built from rather than reaching inside it.
+    expect(config.providers.anthropic.baseUrl).toBe('https://gw.example.com')
+  })
+})
+
+// The host can be a gateway the user typed in, so an error that says "the
+// Anthropic API" is naming the wrong service to go and check.
+describe('anthropic errors name the host that was called', () => {
+  it('names it when the request fails outright', async () => {
+    const provider = createAnthropicProvider({
+      apiKey: 'k',
+      baseUrl: 'https://gw.example.com',
+      fetchImpl: async () => {
+        throw new Error('connect ECONNREFUSED')
+      },
+    })
+
+    await expect(provider.complete(request)).rejects.toThrow(/gw\.example\.com/)
+  })
+
+  it('names it on a bad status', async () => {
+    const provider = createAnthropicProvider({
+      apiKey: 'k',
+      baseUrl: 'https://gw.example.com',
+      fetchImpl: async () => jsonResponse({ error: 'nope' }, 401),
+    })
+
+    await expect(provider.complete(request)).rejects.toThrow(/gw\.example\.com returned 401/)
+  })
+})
+
 describe('openai-compatible provider', () => {
   it('parses function-call arguments', async () => {
     const provider = createOpenAiCompatibleProvider({

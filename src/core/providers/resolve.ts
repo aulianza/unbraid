@@ -68,6 +68,7 @@ export async function resolveProvider(
   const buildAnthropic = (key: string) =>
     createAnthropicProvider({
       apiKey: key,
+      baseUrl: providers.anthropic.baseUrl,
       model: config.model === 'auto' ? providers.anthropic.model : config.model,
     })
 

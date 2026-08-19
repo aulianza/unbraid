@@ -2,19 +2,24 @@ import { describe, it, expect } from 'vitest'
 import { parse } from 'yaml'
 import {
   PRESETS,
+  CUSTOM_KEY_ENV,
   findPreset,
   buildConfig,
+  normalizeBaseUrl,
   renderConfigFile,
   exportLine,
   profilePath,
 } from './init.js'
 import { configSchema, defaultConfig } from '../core/config/schema.js'
 
+/** The ready-made services. The self-entered endpoints have their own rules. */
+const READY_MADE = PRESETS.filter((preset) => !preset.custom)
+
 describe('presets', () => {
   it('all parse as valid config', () => {
     // A typo in a base URL here produces a 404 that reads like an auth failure,
     // so every preset is validated rather than trusted.
-    for (const preset of PRESETS) {
+    for (const preset of READY_MADE) {
       const config = configSchema.parse({
         provider: 'openai-compatible',
         providers: {
@@ -29,7 +34,7 @@ describe('presets', () => {
     }
   })
 
-  it.each(PRESETS.map((p) => [p.key, p] as const))('%s looks sane', (_key, preset) => {
+  it.each(READY_MADE.map((p) => [p.key, p] as const))('%s looks sane', (_key, preset) => {
     expect(preset.baseUrl).toMatch(/^https?:\/\//)
     expect(preset.model.length).toBeGreaterThan(0)
     expect(preset.apiKeyEnv).toMatch(/^[A-Z0-9_]+$/)
@@ -52,9 +57,93 @@ describe('presets', () => {
   })
 
   it('gives every keyed provider somewhere to get a key', () => {
-    for (const preset of PRESETS.filter((p) => p.key !== 'ollama')) {
+    for (const preset of READY_MADE.filter((p) => p.key !== 'ollama')) {
       expect(preset.keyUrl).toMatch(/^https:\/\//)
     }
+  })
+})
+
+/**
+ * A gateway someone runs themselves — OneRouter, LiteLLM, vLLM, a company proxy
+ * — has no base URL anybody can fill in for them, so these ask for the three
+ * fields instead of listing a service.
+ */
+describe('self-entered endpoints', () => {
+  const custom = PRESETS.filter((preset) => preset.custom)
+
+  it('offers one for each API shape', () => {
+    expect(custom.map((preset) => preset.api).sort()).toEqual(['anthropic', 'openai'])
+  })
+
+  // Last because they ask three questions where the others ask none.
+  it('lists them after every ready-made service', () => {
+    const firstCustom = PRESETS.findIndex((preset) => preset.custom)
+    expect(firstCustom).toBe(READY_MADE.length)
+  })
+
+  // A gateway key is not an OpenAI or Anthropic key. Storing it under their
+  // name would shadow — or be shadowed by — a real key for the real service.
+  it('keeps their key under a name of its own', () => {
+    for (const preset of custom) {
+      expect(preset.apiKeyEnv).toBe(CUSTOM_KEY_ENV)
+      expect(preset.apiKeyEnv).not.toBe('OPENAI_API_KEY')
+      expect(preset.apiKeyEnv).not.toBe('ANTHROPIC_API_KEY')
+    }
+  })
+
+  it('leaves the endpoint and model to be asked for', () => {
+    for (const preset of custom) {
+      expect(preset.baseUrl).toBe('')
+      expect(preset.model).toBe('')
+    }
+  })
+})
+
+/**
+ * The two APIs take different base URLs, and both are easy to get wrong from
+ * the documentation somebody is copying from. Pasting a full endpoint into
+ * either produced a doubled path and a 404 that reads like a bad key.
+ */
+describe('normalizeBaseUrl', () => {
+  it('keeps a correct OpenAI base as it is', () => {
+    expect(normalizeBaseUrl('https://gw.example.com/v1', 'openai')).toBe(
+      'https://gw.example.com/v1',
+    )
+  })
+
+  it('trims the OpenAI endpoint when the whole URL was pasted', () => {
+    expect(normalizeBaseUrl('https://gw.example.com/v1/chat/completions', 'openai')).toBe(
+      'https://gw.example.com/v1',
+    )
+  })
+
+  // The Anthropic provider appends /v1/messages, so the base stops at the host.
+  it('drops the version segment for Anthropic', () => {
+    expect(normalizeBaseUrl('https://gw.example.com/v1', 'anthropic')).toBe(
+      'https://gw.example.com',
+    )
+    expect(normalizeBaseUrl('https://gw.example.com/v1/messages', 'anthropic')).toBe(
+      'https://gw.example.com',
+    )
+  })
+
+  it('leaves a bare host alone for Anthropic', () => {
+    expect(normalizeBaseUrl('https://gw.example.com', 'anthropic')).toBe(
+      'https://gw.example.com',
+    )
+  })
+
+  it('strips trailing slashes and surrounding space', () => {
+    expect(normalizeBaseUrl('  https://gw.example.com/v1//  ', 'openai')).toBe(
+      'https://gw.example.com/v1',
+    )
+  })
+
+  // A path that merely contains "v1" is not a version suffix.
+  it('only trims the suffix, never the middle of a path', () => {
+    expect(normalizeBaseUrl('https://gw.example.com/v1/openai/v1', 'openai')).toBe(
+      'https://gw.example.com/v1/openai/v1',
+    )
   })
 })
 
@@ -104,6 +193,47 @@ describe('buildConfig', () => {
     expect(
       buildConfig({ provider: 'anthropic', anthropicModel: 'claude-opus-5' }),
     ).toMatchObject({ providers: { anthropic: { model: 'claude-opus-5' } } })
+  })
+
+  it('writes a self-entered OpenAI endpoint', () => {
+    const preset = findPreset('custom-openai')!
+    const config = buildConfig({
+      provider: 'openai-compatible',
+      preset: { ...preset, baseUrl: 'https://gw.example.com/v1', model: 'gpt-4o-mini' },
+    })
+
+    expect(config).toMatchObject({
+      provider: 'openai-compatible',
+      providers: {
+        'openai-compatible': {
+          baseUrl: 'https://gw.example.com/v1',
+          apiKeyEnv: CUSTOM_KEY_ENV,
+          model: 'gpt-4o-mini',
+        },
+      },
+    })
+  })
+
+  // Reached through the same question, but served by the other provider: the
+  // request bodies and the paths differ, so the two are not interchangeable.
+  it('routes a self-entered Anthropic endpoint to the anthropic provider', () => {
+    const preset = findPreset('custom-anthropic')!
+    const config = buildConfig({
+      provider: 'openai-compatible',
+      preset: { ...preset, baseUrl: 'https://gw.example.com', model: 'claude-sonnet-5' },
+    })
+
+    expect(config).toMatchObject({
+      provider: 'anthropic',
+      providers: {
+        anthropic: {
+          baseUrl: 'https://gw.example.com',
+          apiKeyEnv: CUSTOM_KEY_ENV,
+          model: 'claude-sonnet-5',
+        },
+      },
+    })
+    expect(config.providers).not.toHaveProperty('openai-compatible')
   })
 
   it('writes only the provider for Codex CLI', () => {

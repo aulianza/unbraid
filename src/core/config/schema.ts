@@ -57,6 +57,13 @@ export const configSchema = z.object({
         .default({}),
       anthropic: z
         .object({
+          /**
+           * Anthropic itself, or anything speaking its Messages API.
+           *
+           * `/v1/messages` is appended, so this is the host and any prefix
+           * before that — not the full endpoint.
+           */
+          baseUrl: z.string().default('https://api.anthropic.com'),
           apiKeyEnv: z.string().default('ANTHROPIC_API_KEY'),
           model: z.string().default('claude-sonnet-5'),
         })

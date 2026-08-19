@@ -68,7 +68,7 @@ export function createAnthropicProvider(options: AnthropicOptions): Provider {
           })
         } catch (error) {
           throw new ProviderError(
-            `Could not reach the Anthropic API: ${(error as Error).message}`,
+            `Could not reach ${baseUrl}: ${(error as Error).message}`,
             'anthropic',
             true,
             error,
@@ -78,7 +78,7 @@ export function createAnthropicProvider(options: AnthropicOptions): Provider {
         if (!response.ok) {
           const detail = await safeText(response)
           throw new ProviderError(
-            `Anthropic API returned ${response.status}: ${detail}`,
+            `${baseUrl} returned ${response.status}: ${detail}`,
             'anthropic',
             isRetryableStatus(response.status),
           )
