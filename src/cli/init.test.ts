@@ -5,6 +5,8 @@ import {
   CUSTOM_KEY_ENV,
   findPreset,
   buildConfig,
+  hostOf,
+  serviceName,
   normalizeBaseUrl,
   renderConfigFile,
   exportLine,
@@ -144,6 +146,43 @@ describe('normalizeBaseUrl', () => {
     expect(normalizeBaseUrl('https://gw.example.com/v1/openai/v1', 'openai')).toBe(
       'https://gw.example.com/v1/openai/v1',
     )
+  })
+})
+
+/**
+ * The key prompt used to be built from the environment variable name, which
+ * read as "Paste your UNBRAID_API_KEY" for a self-entered endpoint — an account
+ * with us, which does not exist. The key belongs to whatever is at the end of
+ * the URL, so the question has to name that instead.
+ */
+describe('naming the thing a key belongs to', () => {
+  it.each([
+    ['OpenAI', 'OpenAI'],
+    ['OpenRouter (many models, one key)', 'OpenRouter'],
+    ['Groq (fast, free tier)', 'Groq'],
+    ['DeepSeek (cheap)', 'DeepSeek'],
+    ['Z.AI / GLM — pay-as-you-go API', 'Z.AI / GLM'],
+  ])('%s reads as %s', (label, expected) => {
+    expect(serviceName(label)).toBe(expected)
+  })
+
+  it('names every ready-made service without its aside', () => {
+    for (const preset of READY_MADE) {
+      const name = serviceName(preset.label)
+      expect(name).not.toContain('(')
+      expect(name).not.toContain('—')
+      expect(name.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('falls back to the host for an endpoint with no brand', () => {
+    expect(hostOf('https://gw.example.com/v1')).toBe('gw.example.com')
+    expect(hostOf('http://localhost:8899/v1')).toBe('localhost:8899')
+  })
+
+  // Setup should not fail over a prompt's wording.
+  it('survives something that is not a URL', () => {
+    expect(hostOf('not a url')).toBe('your endpoint')
   })
 })
 

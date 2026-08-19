@@ -162,6 +162,31 @@ export function normalizeBaseUrl(url: string, api: 'openai' | 'anthropic'): stri
   return trimmed
 }
 
+/**
+ * The service a preset stands for, without its parenthetical.
+ *
+ * Labels are written to be read in a list — "Groq (fast, free tier)" — and that
+ * aside is noise in the middle of a sentence asking for a key.
+ */
+export function serviceName(label: string): string {
+  return label.split(/\s+\(|\s+—\s+/)[0]!.trim()
+}
+
+/**
+ * The host of an endpoint, as the name to call it by.
+ *
+ * A gateway somebody runs has no brand to use in a prompt, and its URL is the
+ * one thing they just typed and will recognise.
+ */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    // Not worth failing setup over: the prompt just says "your endpoint".
+    return 'your endpoint'
+  }
+}
+
 export interface InitAnswers {
   provider: 'claude-cli' | 'codex-cli' | 'anthropic' | 'openai-compatible'
   preset?: Preset
