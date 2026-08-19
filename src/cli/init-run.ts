@@ -5,8 +5,10 @@ import { dirname, join } from 'node:path'
 import {
   PRESETS,
   buildConfig,
+  hostOf,
   normalizeBaseUrl,
   renderConfigFile,
+  serviceName,
   type InitAnswers,
   type Preset,
 } from './init.js'
@@ -188,11 +190,26 @@ export async function runInit(options: InitOptions): Promise<void> {
    * paste on several terminals, and a key nobody can paste is worse than one
    * briefly visible in a scrollback the user already controls.
    */
-  const promptForKey = async (envVar: string, keyUrl: string | null): Promise<void> => {
+  /**
+   * Ask for the key, naming the service it belongs to.
+   *
+   * The question used to be built from the environment variable — "Paste your
+   * GROQ_API_KEY". That reads well only while the variable happens to be named
+   * after the service. For an endpoint somebody typed in there is no such name,
+   * and the prompt asked for an "UNBRAID_API_KEY", which sounds like an account
+   * with us. There is no such thing. The key belongs to whatever is at the far
+   * end of that URL, so that is what the question says; where it gets stored is
+   * a detail, printed after.
+   */
+  const promptForKey = async (
+    envVar: string,
+    keyUrl: string | null,
+    service: string,
+  ): Promise<void> => {
     console.log('')
     if (keyUrl) console.log(`Get a key at ${cyan(keyUrl)}`)
 
-    const key = await ask(`${bold(`Paste your ${envVar}`)} ${dim('(enter to skip): ')}`)
+    const key = await ask(`${bold(`Paste your ${service} API key`)} ${dim('(enter to skip): ')}`)
     if (key === '') {
       console.log(
         dim(`\nSkipped. Set ${envVar} in your shell, or run \`unbraid init\` again.`),
@@ -202,7 +219,9 @@ export async function runInit(options: InitOptions): Promise<void> {
 
     await saveCredential(envVar, key)
     console.log(green(`✓ Saved ${maskKey(key)} to ${credentialsPath()}`))
-    console.log(dim('  Stored outside your repository, readable only by you.'))
+    console.log(
+      dim(`  Stored outside your repository, readable only by you, as ${envVar}.`),
+    )
   }
 
   try {
@@ -261,6 +280,8 @@ export async function runInit(options: InitOptions): Promise<void> {
     let requiredEnv: string | null = null
     let keyUrl: string | null = null
     let presetNote: string | undefined
+    /** What the key belongs to, in the words the user would use for it. */
+    let keyService = 'provider'
 
     if (answers.provider === 'codex-cli') {
       answers.codexModel = await ask(
@@ -270,6 +291,7 @@ export async function runInit(options: InitOptions): Promise<void> {
     } else if (answers.provider === 'anthropic') {
       requiredEnv = 'ANTHROPIC_API_KEY'
       keyUrl = 'https://console.anthropic.com/settings/keys'
+      keyService = 'Anthropic'
       answers.anthropicModel = await ask(
         `\n${bold('Model')} ${dim('[claude-sonnet-5]')}: `,
         'claude-sonnet-5',
@@ -309,8 +331,11 @@ export async function runInit(options: InitOptions): Promise<void> {
         // Always ask: there is no shared account here whose key might already
         // be exported under a name unbraid would find.
         requiredEnv = preset.apiKeyEnv
+        // The host, because that is the only name this endpoint has.
+        keyService = hostOf(baseUrl)
       } else {
         requiredEnv = preset.keyUrl ? preset.apiKeyEnv : null
+        keyService = serviceName(preset.label)
         const model = await ask(`\n${bold('Model')} ${dim(`[${preset.model}]`)}: `, preset.model)
         answers.preset = { ...preset, model }
       }
@@ -332,9 +357,11 @@ export async function runInit(options: InitOptions): Promise<void> {
       if (existing) {
         console.log(green(`\n✓ ${requiredEnv} is already set (${maskKey(existing)})`))
         const replace = await ask(`${dim('Replace it? [y/N] ')}`, 'n')
-        if (replace.toLowerCase() === 'y') await promptForKey(requiredEnv, keyUrl)
+        if (replace.toLowerCase() === 'y') {
+          await promptForKey(requiredEnv, keyUrl, keyService)
+        }
       } else {
-        await promptForKey(requiredEnv, keyUrl)
+        await promptForKey(requiredEnv, keyUrl, keyService)
       }
     }
     if (presetNote) console.log(dim(`\n${presetNote}`))

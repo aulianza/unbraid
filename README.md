@@ -472,8 +472,10 @@ providers:
 and `/v1/messages` to the second, so the OpenAI form ends at `/v1` and the Anthropic form ends at
 the host. Paste a whole endpoint into either and the wizard trims it for you.
 
-Keys go under `UNBRAID_API_KEY`, not `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — a gateway key is
-neither of those, and filing it under their name would shadow a real one.
+unbraid asks for "your gw.example.com API key" — it is your provider's key, and it is stored
+under the name `UNBRAID_API_KEY` rather than `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, because a
+gateway key is neither of those and filing it under their name would shadow a real one. Prefer
+your own variable? Set `apiKeyEnv` to anything you like and export that instead.
 
 </details>
 
