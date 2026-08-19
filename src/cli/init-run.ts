@@ -419,8 +419,15 @@ export async function runInit(options: InitOptions): Promise<void> {
       console.log(
         `\nThe config file is saved. Fix the problem above, then run ${bold('unbraid --dry-run')} to retry.`,
       )
-      if (requiredEnv && !process.env[requiredEnv]) {
-        console.log(dim(`Most likely: ${requiredEnv} is not set in this terminal yet.`))
+      // Only when there is genuinely no key to be found. A key pasted a moment
+      // ago is saved and will be read back, so blaming an unset environment
+      // variable sends the user to fix something that is not broken.
+      if (requiredEnv) {
+        const stored = await readCredentials()
+        const haveKey = Boolean(process.env[requiredEnv] ?? stored[requiredEnv])
+        if (!haveKey) {
+          console.log(dim(`Most likely: no ${requiredEnv} is set yet.`))
+        }
       }
     }
   } catch (error) {
