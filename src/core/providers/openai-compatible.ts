@@ -5,6 +5,7 @@ import {
   type Provider,
 } from './types.js'
 import { isRetryableStatus } from './anthropic.js'
+import { parseJsonBody, ResponseParseError } from './response-body.js'
 
 export interface OpenAiCompatibleOptions {
   baseUrl: string
@@ -93,12 +94,28 @@ export function createOpenAiCompatibleProvider(
           )
         }
 
-        const payload = (await response.json()) as {
+        // Not response.json(): some gateways answer with the object plus
+        // event-stream framing, which is JSON with something after it.
+        let payload: {
           choices?: Array<{
             message?: {
               tool_calls?: Array<{ function?: { arguments?: string } }>
             }
           }>
+        }
+
+        try {
+          payload = parseJsonBody(await response.text())
+        } catch (error) {
+          if (error instanceof ResponseParseError) {
+            throw new ProviderError(
+              `${baseUrl} did not return JSON. It answered with: ${error.body}`,
+              'openai-compatible',
+              false,
+              error,
+            )
+          }
+          throw error
         }
 
         const rawArguments =

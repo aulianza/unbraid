@@ -4,6 +4,7 @@ import {
   type CompletionRequest,
   type Provider,
 } from './types.js'
+import { parseJsonBody, ResponseParseError } from './response-body.js'
 
 export interface AnthropicOptions {
   apiKey: string
@@ -84,8 +85,24 @@ export function createAnthropicProvider(options: AnthropicOptions): Provider {
           )
         }
 
-        const payload = (await response.json()) as {
+        // Not response.json(): some gateways answer with the object plus
+        // event-stream framing, which is JSON with something after it.
+        let payload: {
           content?: Array<{ type: string; name?: string; input?: unknown }>
+        }
+
+        try {
+          payload = parseJsonBody(await response.text())
+        } catch (error) {
+          if (error instanceof ResponseParseError) {
+            throw new ProviderError(
+              `${baseUrl} did not return JSON. It answered with: ${error.body}`,
+              'anthropic',
+              false,
+              error,
+            )
+          }
+          throw error
         }
         const toolUse = payload.content?.find((block) => block.type === 'tool_use')
 
