@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import {
   PRESETS,
   buildConfig,
+  normalizeBaseUrl,
   renderConfigFile,
   type InitAnswers,
   type Preset,
@@ -281,12 +282,38 @@ export async function runInit(options: InitOptions): Promise<void> {
       )
       const preset: Preset = PRESETS[presetIndex]!
       answers.preset = preset
-      requiredEnv = preset.keyUrl ? preset.apiKeyEnv : null
       keyUrl = preset.keyUrl
       presetNote = preset.note
 
-      const model = await ask(`\n${bold('Model')} ${dim(`[${preset.model}]`)}: `, preset.model)
-      answers.preset = { ...preset, model }
+      if (preset.custom) {
+        // Three questions, because none of them can be guessed for a gateway
+        // somebody runs themselves.
+        const api = preset.api ?? 'openai'
+        const example =
+          api === 'anthropic' ? 'https://your-gateway.example.com' : 'https://your-gateway.example.com/v1'
+
+        let baseUrl = ''
+        while (baseUrl === '') {
+          const entered = await ask(`\n${bold('Endpoint')} ${dim(`e.g. ${example}`)}: `)
+          baseUrl = normalizeBaseUrl(entered, api)
+          if (baseUrl === '') console.log(red('An endpoint is required.'))
+        }
+
+        let model = ''
+        while (model === '') {
+          model = (await ask(`${bold('Model')} ${dim('as the endpoint names it')}: `)).trim()
+          if (model === '') console.log(red('A model is required.'))
+        }
+
+        answers.preset = { ...preset, baseUrl, model }
+        // Always ask: there is no shared account here whose key might already
+        // be exported under a name unbraid would find.
+        requiredEnv = preset.apiKeyEnv
+      } else {
+        requiredEnv = preset.keyUrl ? preset.apiKeyEnv : null
+        const model = await ask(`\n${bold('Model')} ${dim(`[${preset.model}]`)}: `, preset.model)
+        answers.preset = { ...preset, model }
+      }
     }
 
     // 3. Commit size
