@@ -23,7 +23,7 @@ const ready: OfferInput = {
   remoteHost: 'github.com',
   isGitHub: true,
   existingPr: null,
-  hasUpstream: true,
+  onRemote: true,
   ahead: 2,
 }
 
@@ -87,14 +87,14 @@ describe('decideNextStep', () => {
     })
   })
 
-  it('offers a push for an open pull request on a never-pushed branch', () => {
+  it('offers a push for an open pull request on a branch not yet on the remote', () => {
     expect(
-      decideNextStep({ ...ready, existingPr: openPr, hasUpstream: false, ahead: 0 }),
+      decideNextStep({ ...ready, existingPr: openPr, onRemote: false, ahead: 0 }),
     ).toMatchObject({ action: 'push' })
   })
 
   it('stays quiet when the pull request already has every commit', () => {
-    expect(reasonFor({ existingPr: openPr, hasUpstream: true, ahead: 0 })).toBe(
+    expect(reasonFor({ existingPr: openPr, onRemote: true, ahead: 0 })).toBe(
       'already-open',
     )
   })
@@ -250,7 +250,12 @@ describe('renderNextStepSummary', () => {
     base: 'master',
     existingPr: null,
     remote: { host: 'github.com', owner: 'acme', repo: 'widgets' },
-    upstream: { upstream: 'origin/fix/public-web-audit', ahead: 3, behind: 0 },
+    push: {
+      ref: 'origin/fix/public-web-audit',
+      exists: true,
+      ahead: 3,
+      trackingElsewhere: null,
+    },
     ghReady: true,
     ...over,
   })
@@ -264,13 +269,64 @@ describe('renderNextStepSummary', () => {
     expect(summary).toContain('3 commits to origin/fix/public-web-audit')
   })
 
-  it('says a branch that has never been pushed will be created', () => {
+  it('says a branch that is not on the remote will be created', () => {
     const summary = renderNextStepSummary(
-      context({ upstream: { upstream: null, ahead: 0, behind: 0 } }),
+      context({
+        push: {
+          ref: 'origin/fix/public-web-audit',
+          exists: false,
+          ahead: 0,
+          trackingElsewhere: null,
+        },
+      }),
       plain,
     )
 
-    expect(summary).toContain('never been pushed')
+    expect(summary).toContain('a new branch on the remote')
+    expect(summary).toContain('origin/fix/public-web-audit')
+  })
+
+  /**
+   * The reported bug: a branch tracking `origin/dev` was told it was "Pushing
+   * 16 commits to origin/dev". The push writes to the branch's own ref, and the
+   * summary exists so nobody has to know that.
+   */
+  it('never names the tracked branch as the push target', () => {
+    const summary = renderNextStepSummary(
+      context({
+        branch: 'games/word-scramble',
+        push: {
+          ref: 'origin/games/word-scramble',
+          exists: false,
+          ahead: 0,
+          trackingElsewhere: 'origin/dev',
+        },
+      }),
+      plain,
+    )
+
+    const pushingLine = summary
+      .split('\n')
+      .find((line) => line.includes('Pushing'))!
+    expect(pushingLine).toContain('origin/games/word-scramble')
+    expect(pushingLine).not.toContain('origin/dev')
+  })
+
+  it('mentions the odd tracking, and that it is not affected', () => {
+    const summary = renderNextStepSummary(
+      context({
+        push: {
+          ref: 'origin/games/word-scramble',
+          exists: false,
+          ahead: 0,
+          trackingElsewhere: 'origin/dev',
+        },
+      }),
+      plain,
+    )
+
+    expect(summary).toContain('tracks origin/dev')
+    expect(summary).toContain('not affected')
   })
 
   it('names the pull request a push would update', () => {
@@ -286,7 +342,9 @@ describe('renderNextStepSummary', () => {
 
   it('says "1 commit", not "1 commits"', () => {
     const summary = renderNextStepSummary(
-      context({ upstream: { upstream: 'origin/x', ahead: 1, behind: 0 } }),
+      context({
+        push: { ref: 'origin/x', exists: true, ahead: 1, trackingElsewhere: null },
+      }),
       plain,
     )
 
@@ -295,7 +353,7 @@ describe('renderNextStepSummary', () => {
 
   it('omits what it does not know rather than printing a blank', () => {
     const summary = renderNextStepSummary(
-      context({ remote: null, upstream: null, base: null }),
+      context({ remote: null, push: null, base: null }),
       plain,
     )
 
@@ -331,7 +389,12 @@ describe('measuring the branch after the commits, not before', () => {
   it('offers the push once the new commit is counted', () => {
     const context = completeOffer(
       facts,
-      { upstream: 'origin/fix/public-web-audit', ahead: 1, behind: 0 },
+      {
+        ref: 'origin/fix/public-web-audit',
+        exists: true,
+        ahead: 1,
+        trackingElsewhere: null,
+      },
       gate,
     )
 
@@ -341,14 +404,19 @@ describe('measuring the branch after the commits, not before', () => {
   it('stays quiet only when the branch really is level', () => {
     const context = completeOffer(
       facts,
-      { upstream: 'origin/fix/public-web-audit', ahead: 0, behind: 0 },
+      {
+        ref: 'origin/fix/public-web-audit',
+        exists: true,
+        ahead: 0,
+        trackingElsewhere: null,
+      },
       gate,
     )
 
     expect(context.step).toEqual({ action: 'none', reason: 'already-open' })
   })
 
-  it('offers the push when the upstream could not be read', () => {
+  it('offers the push when the branch state could not be read', () => {
     expect(completeOffer(facts, null, gate).step).toMatchObject({ action: 'push' })
   })
 
@@ -360,7 +428,12 @@ describe('measuring the branch after the commits, not before', () => {
   it('opens a pull request when none exists, however far ahead', () => {
     const context = completeOffer(
       { ...facts, existingPr: null },
-      { upstream: 'origin/fix/public-web-audit', ahead: 4, behind: 0 },
+      {
+        ref: 'origin/fix/public-web-audit',
+        exists: true,
+        ahead: 4,
+        trackingElsewhere: null,
+      },
       gate,
     )
 

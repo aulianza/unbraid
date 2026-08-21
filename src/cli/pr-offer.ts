@@ -5,7 +5,7 @@ import {
   resolveBaseBranch,
   remoteNames,
   stripRemotePrefix,
-  type UpstreamStatus,
+  type PushPlan,
 } from '../core/git/branch.js'
 import { readRemote, isGitHub, type Remote } from '../core/git/remote.js'
 
@@ -56,9 +56,9 @@ export interface OfferInput {
   isGitHub: boolean
   /** A pull request that already exists for this branch. */
   existingPr: ExistingPr | null
-  /** False when the branch has never been pushed. */
-  hasUpstream: boolean
-  /** Local commits the remote does not have. */
+  /** False when this branch is not on the remote yet. */
+  onRemote: boolean
+  /** Commits the remote branch does not have. */
   ahead: number
 }
 
@@ -89,7 +89,7 @@ export function decideNextStep(input: OfferInput): NextStep {
 
   if (input.existingPr !== null) {
     // Nothing to send: the pull request already has every commit.
-    if (input.hasUpstream && input.ahead === 0) return none('already-open')
+    if (input.onRemote && input.ahead === 0) return none('already-open')
     return { action: 'push', pr: input.existingPr }
   }
 
@@ -239,7 +239,7 @@ export interface OfferFacts {
 
 export interface OfferContext extends OfferFacts {
   step: NextStep
-  upstream: UpstreamStatus | null
+  push: PushPlan | null
 }
 
 export interface OfferGate {
@@ -254,16 +254,16 @@ export interface OfferGate {
  */
 export function completeOffer(
   facts: OfferFacts,
-  upstream: UpstreamStatus | null,
+  push: PushPlan | null,
   gate: OfferGate,
 ): OfferContext {
   if (facts.skip !== null) {
-    return { ...facts, upstream, step: { action: 'none', reason: facts.skip } }
+    return { ...facts, push, step: { action: 'none', reason: facts.skip } }
   }
 
   return {
     ...facts,
-    upstream,
+    push,
     step: decideNextStep({
       ...gate,
       branch: facts.branch,
@@ -271,11 +271,11 @@ export function completeOffer(
       remoteHost: facts.remote?.host ?? null,
       isGitHub: facts.remote !== null,
       existingPr: facts.existingPr,
-      // A branch whose upstream could not be read is treated as unpushed: the
-      // cost of offering a push that turns out to be unnecessary is one extra
-      // question, against silently withholding the only step that remains.
-      hasUpstream: upstream?.upstream != null,
-      ahead: upstream?.ahead ?? 0,
+      // A branch whose state could not be read is treated as not yet on the
+      // remote: the cost of offering a push that turns out to be unnecessary is
+      // one extra question, against withholding the only step that remains.
+      onRemote: push?.exists ?? false,
+      ahead: push?.ahead ?? 0,
     }),
   }
 }
@@ -399,14 +399,22 @@ export function renderNextStepSummary(
     rows.push(['Repository', `${owner}/${repo} on ${host}`])
   }
 
-  if (context.upstream) {
-    const { upstream, ahead } = context.upstream
+  if (context.push) {
+    const { ref, exists, ahead, trackingElsewhere } = context.push
+
     rows.push([
       'Pushing',
-      upstream === null
-        ? 'creates the remote branch — it has never been pushed'
-        : `${plural(ahead, 'commit')} to ${upstream}`,
+      exists
+        ? `${plural(ahead, 'commit')} to ${ref}`
+        : `${ref} — a new branch on the remote`,
     ])
+
+    // A branch can track anything, and tracking `origin/dev` while pushing to
+    // `origin/my-branch` looks alarming enough to stop for. Saying it outright
+    // is better than letting it be discovered in the git output afterwards.
+    if (trackingElsewhere !== null) {
+      rows.push(['', `(this branch tracks ${trackingElsewhere}, which is not affected)`])
+    }
   }
 
   if (context.step.action === 'push') {
