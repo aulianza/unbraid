@@ -82,9 +82,9 @@ export function buildPrPrompt(summary: BranchSummary): string {
           '## Merged in from other branches',
           ...summary.merges.map((subject) => `- ${subject}`),
           '',
-          'Those changes are in the diff but are NOT this branch\'s work.',
-          'Do not describe them. Mention them in one bullet only if a reviewer',
-          'would otherwise be confused by their presence.',
+          'Their changes are NOT this branch\'s work and have been left out of',
+          'the file list above. Do not describe them. Mention them in one bullet',
+          'only if a reviewer would otherwise be confused by their presence.',
         ].join('\n')
       : ''
 
@@ -202,8 +202,12 @@ function truncate(text: string, limit: number): string {
 }
 
 function dim(summary: BranchSummary): string {
+  // "includes N merge(s)" read as though their diffs were in the totals. They
+  // are not, and that is the more useful thing to say.
   const merged =
-    summary.merges.length > 0 ? ` · includes ${summary.merges.length} merge(s)` : ''
+    summary.merges.length > 0
+      ? ` · ${summary.merges.length} merge${summary.merges.length === 1 ? '' : 's'} not counted`
+      : ''
   return `${summary.commits.length} commits · ${summary.filesChanged} files · +${summary.insertions}/-${summary.deletions}${merged}`
 }
 

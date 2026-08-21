@@ -10,7 +10,7 @@ import { checkSecrets, describeSecretWarning } from './guard.js'
 import { renderPlan, describeFileCount, bold, cyan, dim, green, red, yellow } from './render.js'
 import { createSpinner } from './spinner.js'
 import { checkForUpdate } from './update-check.js'
-import { BranchError, pushBranch, upstreamStatus } from '../core/git/branch.js'
+import { BranchError, planPush, pushBranch } from '../core/git/branch.js'
 import { runPr, type PrFlags } from './pr-command.js'
 import {
   startOffer,
@@ -268,9 +268,12 @@ async function offerPullRequest(options: {
     // Measured now, not alongside the commits: this is the one number the
     // commits change. Reading it early is what made unbraid announce that a
     // pull request already held commits made a moment later.
-    const upstream = facts.skip === null ? await upstreamStatus(options.git) : null
+    const push =
+      facts.skip === null && facts.branch !== null
+        ? await planPush(options.git, options.config.execute.pushRemote, facts.branch)
+        : null
 
-    const context = completeOffer(facts, upstream, {
+    const context = completeOffer(facts, push, {
       enabled: options.config.pr.offerAfterCommit,
       interactive: process.stdin.isTTY === true,
       unattended: options.unattended,
@@ -341,8 +344,9 @@ async function offerPush(
 ): Promise<void> {
   if (context.step.action !== 'push' || context.branch === null) return
 
-  const target =
-    context.upstream?.upstream ?? `${config.execute.pushRemote}/${context.branch}`
+  // The ref the push writes to, never the tracking ref: they are not always
+  // the same branch, and this question is the last thing before it happens.
+  const target = context.push?.ref ?? `${config.execute.pushRemote}/${context.branch}`
 
   if (!(await confirm(`Push to ${target}?`, true))) {
     console.log(dim('Not now. Push whenever you are ready.'))
@@ -356,7 +360,10 @@ async function offerPush(
       createGit(cwd),
       config.execute.pushRemote,
       context.branch,
-      context.upstream?.upstream === null,
+      // Set upstream only when this branch is not on the remote yet. Keyed on
+      // the branch's own ref, so a branch tracking something else still gets
+      // its tracking corrected on the first push.
+      context.push?.exists === false,
     )
   } finally {
     spinner.stop()

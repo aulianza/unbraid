@@ -232,7 +232,7 @@ it's about to do:
 
   Branch      fix/public-web-audit
   Repository  acme/storefront on github.com
-  Pushing     creates the remote branch — it has never been pushed
+  Pushing     origin/fix/public-web-audit — a new branch on the remote
   Opens       a pull request into master
 
 Open this pull request? [Y/n]
@@ -262,6 +262,15 @@ last commit lands, the question is already on screen.
 
 It only asks when the answer could be yes — you're on a branch, not on `main`, and the remote is
 GitHub. Turn the question off for good with `pr.offerAfterCommit: false`.
+
+**It pushes the branch you are on, to the branch of the same name.** If yours tracks something
+else — created from `dev` with `--track`, say — the summary names the ref the push writes to and
+says so explicitly, because the branch it tracks is not the one being written:
+
+```
+  Pushing     origin/games/word-scramble — a new branch on the remote
+              (this branch tracks origin/dev, which is not affected)
+```
 
 Or run it yourself, any time:
 

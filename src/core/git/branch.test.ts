@@ -215,3 +215,79 @@ describe('the base branch a host is told about', () => {
     expect(summary.commits).toHaveLength(1)
   })
 })
+
+/**
+ * Reported from a real pull request: "17 commits · 60 files · +2624/-69 ·
+ * includes 1 merge(s)" for a branch that had touched a fraction of that. The
+ * branch had `dev` merged into it, and the stats came from `diff base...HEAD`,
+ * which counts everything the merge brought along. The description then
+ * described that work as the branch's own.
+ */
+describe('a branch with another branch merged into it', () => {
+  async function withMergedBranch(): Promise<TempRepo> {
+    const r = await createTempRepo()
+
+    // Twenty files land on `dev`, none of them this branch's work.
+    await r.git.run(['checkout', '-q', '-b', 'dev'])
+    for (let i = 0; i < 20; i++) {
+      await r.write(`vendor/mod-${i}.ts`, `export const m${i} = ${i}\n`.repeat(20))
+    }
+    await r.stage()
+    await r.commit('feat(vendor): a great deal of somebody else work')
+
+    await r.git.run(['checkout', '-q', 'main'])
+    await r.git.run(['checkout', '-q', '-b', 'feature/mine'])
+    await r.write('mine.ts', 'export const mine = 1\n')
+    await r.stage()
+    await r.commit('feat: my own change')
+
+    await r.git.run(['merge', '--no-ff', '-q', '-m', 'Merge dev', 'dev'])
+
+    await r.write('mine-two.ts', 'export const two = 2\n')
+    await r.stage()
+    await r.commit('feat: my second change')
+
+    return r
+  }
+
+  it('counts only the files this branch touched', async () => {
+    repo = await withMergedBranch()
+    const summary = await summarizeBranch(repo.git, 'main')
+
+    expect(summary.filesChanged).toBe(2)
+    expect(summary.insertions).toBe(2)
+  })
+
+  it('leaves merged-in files out of the list the model reads', async () => {
+    repo = await withMergedBranch()
+    const summary = await summarizeBranch(repo.git, 'main')
+
+    expect(summary.diffstat).toContain('mine.ts')
+    expect(summary.diffstat).toContain('mine-two.ts')
+    expect(summary.diffstat).not.toContain('vendor/')
+  })
+
+  // The merge is still reported — just not counted.
+  it('still records that a merge happened', async () => {
+    repo = await withMergedBranch()
+    const summary = await summarizeBranch(repo.git, 'main')
+
+    expect(summary.merges).toHaveLength(1)
+    expect(summary.commits.map((c) => c.subject)).not.toContain(
+      'feat(vendor): a great deal of somebody else work',
+    )
+  })
+
+  it('counts normally when nothing was merged in', async () => {
+    repo = await createTempRepo()
+    await repo.git.run(['checkout', '-q', '-b', 'feature/plain'])
+    await repo.write('a.ts', 'export const a = 1\n')
+    await repo.stage()
+    await repo.commit('feat: a')
+
+    const summary = await summarizeBranch(repo.git, 'main')
+    expect(summary.filesChanged).toBe(1)
+    expect(summary.insertions).toBe(1)
+    expect(summary.merges).toHaveLength(0)
+  })
+})

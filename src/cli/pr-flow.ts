@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import type { Git } from '../core/git/exec.js'
 import {
-  upstreamStatus,
+  planPush,
   pushBranch,
   BranchError,
+  type PushPlan,
 } from '../core/git/branch.js'
 import { readRemote, isGitHub, type Remote } from '../core/git/remote.js'
 import { planCompareUrl, describeDroppedBody } from '../core/engine/pr-url.js'
@@ -22,26 +23,28 @@ export interface PushDecision {
 /**
  * Decide whether the branch must be pushed before a pull request can be opened.
  *
- * Separated from the prompting so the rule is testable: no upstream means the
- * host cannot see the branch at all, and an upstream that is behind produces a
- * pull request missing the newest commits — which looks like success and is the
- * more dangerous of the two.
+ * Separated from the prompting so the rule is testable: a branch the host does
+ * not have cannot be opened as a pull request at all, and one that is behind
+ * produces a pull request missing the newest commits — which looks like success
+ * and is the more dangerous of the two.
+ *
+ * Judged on the branch's own ref on the remote, not on whatever it happens to
+ * track. A branch created from `dev` keeps `origin/dev` as its upstream while
+ * pushing to its own name, so reading the upstream answers a different question
+ * than the one being asked here.
  */
-export function decidePush(
-  status: { upstream: string | null; ahead: number },
-  branch: string,
-): PushDecision {
-  if (status.upstream === null) {
+export function decidePush(plan: PushPlan, branch: string): PushDecision {
+  if (!plan.exists) {
     return {
       needed: true,
-      reason: `${branch} has not been pushed yet. GitHub cannot open a pull request for a branch it cannot see.`,
+      reason: `${branch} is not on the remote yet. GitHub cannot open a pull request for a branch it cannot see.`,
       setUpstream: true,
     }
   }
-  if (status.ahead > 0) {
+  if (plan.ahead > 0) {
     return {
       needed: true,
-      reason: `${branch} has ${status.ahead} commit${status.ahead === 1 ? '' : 's'} that ${status.upstream} does not. The pull request would be missing them.`,
+      reason: `${branch} has ${plan.ahead} commit${plan.ahead === 1 ? '' : 's'} that ${plan.ref} does not. The pull request would be missing them.`,
       setUpstream: false,
     }
   }
@@ -63,11 +66,11 @@ export interface EnsurePushedOptions {
 export async function ensurePushed(
   options: EnsurePushedOptions,
 ): Promise<boolean> {
-  const status = await upstreamStatus(options.git)
-  const decision = decidePush(status, options.branch)
+  const plan = await planPush(options.git, options.remote, options.branch)
+  const decision = decidePush(plan, options.branch)
   if (!decision.needed) return true
 
-  const target = status.upstream ?? `${options.remote}/${options.branch}`
+  const target = plan.ref
   if (!(await options.confirm(decision.reason, target))) return false
 
   options.onPushStart?.(target)

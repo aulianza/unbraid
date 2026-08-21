@@ -1,7 +1,12 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { decidePush, ensurePushed } from './pr-flow.js'
 import { browserCommand, clipboardCommand, openUrl, copyToClipboard } from './open-url.js'
-import { upstreamStatus, listBranches } from '../core/git/branch.js'
+import {
+  upstreamStatus,
+  listBranches,
+  planPush,
+  type PushPlan,
+} from '../core/git/branch.js'
 import { createTempRepo, type TempRepo } from '../core/git/test-helpers.js'
 
 let repo: TempRepo
@@ -19,9 +24,107 @@ async function repoWithRemote(): Promise<TempRepo> {
   return r
 }
 
+const plan = (over: Partial<PushPlan> = {}): PushPlan => ({
+  ref: 'origin/feat/x',
+  exists: true,
+  ahead: 0,
+  trackingElsewhere: null,
+  ...over,
+})
+
+/**
+ * The reported case, end to end against a real remote.
+ *
+ * A feature branch was created from `dev` and kept `origin/dev` as its
+ * upstream. unbraid read that upstream and told the user it was "Pushing 16
+ * commits to origin/dev" — a sentence that reads like it is about to write to a
+ * shared branch. It was not: `git push <remote> <branch>` names the branch, so
+ * the commits were only ever going to `origin/games/word-scramble`.
+ */
+describe('planPush against a branch tracking somewhere else', () => {
+  async function branchTrackingDev(): Promise<TempRepo> {
+    const r = await repoWithRemote()
+
+    await r.git.run(['checkout', '-q', '-b', 'dev'])
+    await r.write('dev.ts', 'export const dev = 1\n')
+    await r.stage()
+    await r.commit('chore: dev')
+    await r.git.run(['push', '-q', '--set-upstream', 'origin', 'dev'])
+
+    await r.git.run(['checkout', '-q', '-b', 'games/word-scramble'])
+    await r.git.run(['branch', '--set-upstream-to=origin/dev', 'games/word-scramble'])
+    await r.write('scramble.ts', 'export const scramble = 1\n')
+    await r.stage()
+    await r.commit('feat: scramble')
+
+    return r
+  }
+
+  it("reports the branch's own ref as the target", async () => {
+    repo = await branchTrackingDev()
+    const plan = await planPush(repo.git, 'origin', 'games/word-scramble')
+
+    expect(plan.ref).toBe('origin/games/word-scramble')
+    expect(plan.ref).not.toContain('dev')
+  })
+
+  it('knows the branch is not on the remote, whatever it tracks', async () => {
+    repo = await branchTrackingDev()
+    const plan = await planPush(repo.git, 'origin', 'games/word-scramble')
+
+    // git rev-parse @{u} answers origin/dev here, which is why this used to
+    // read as "already pushed".
+    expect(plan.exists).toBe(false)
+    expect(plan.trackingElsewhere).toBe('origin/dev')
+  })
+
+  it('counts against the branch, once it is on the remote', async () => {
+    repo = await branchTrackingDev()
+    await repo.git.run(['push', '-q', 'origin', 'games/word-scramble'])
+
+    await repo.write('more.ts', 'export const more = 1\n')
+    await repo.stage()
+    await repo.commit('feat: more')
+
+    const plan = await planPush(repo.git, 'origin', 'games/word-scramble')
+    expect(plan.exists).toBe(true)
+    expect(plan.ahead).toBe(1)
+  })
+
+  // The whole point: the shared branch is untouched.
+  it('leaves the tracked branch alone when the push happens', async () => {
+    repo = await branchTrackingDev()
+    const devBefore = (await repo.git.run(['rev-parse', 'origin/dev'])).trim()
+
+    await ensurePushed({
+      git: repo.git,
+      branch: 'games/word-scramble',
+      remote: 'origin',
+      confirm: async () => true,
+    })
+
+    await repo.git.run(['fetch', '-q', 'origin'])
+    const devAfter = (await repo.git.run(['rev-parse', 'origin/dev'])).trim()
+
+    expect(devAfter).toBe(devBefore)
+    expect(
+      (await repo.git.runRaw(['rev-parse', '--verify', 'refs/remotes/origin/games/word-scramble']))
+        .code,
+    ).toBe(0)
+  })
+
+  it('reports no mismatch for an ordinary branch', async () => {
+    repo = await repoWithRemote()
+    const plan = await planPush(repo.git, 'origin', 'main')
+
+    expect(plan.exists).toBe(true)
+    expect(plan.trackingElsewhere).toBeNull()
+  })
+})
+
 describe('decidePush', () => {
-  it('requires a push when there is no upstream', () => {
-    const decision = decidePush({ upstream: null, ahead: 0 }, 'feat/x')
+  it('requires a push when the branch is not on the remote', () => {
+    const decision = decidePush(plan({ exists: false }), 'feat/x')
 
     expect(decision.needed).toBe(true)
     expect(decision.setUpstream).toBe(true)
@@ -31,7 +134,7 @@ describe('decidePush', () => {
   // The dangerous case: this one looks like success and produces a pull
   // request quietly missing the newest commits.
   it('requires a push when local commits are unpushed', () => {
-    const decision = decidePush({ upstream: 'origin/feat/x', ahead: 3 }, 'feat/x')
+    const decision = decidePush(plan({ ahead: 3 }), 'feat/x')
 
     expect(decision.needed).toBe(true)
     expect(decision.setUpstream).toBe(false)
@@ -39,11 +142,38 @@ describe('decidePush', () => {
   })
 
   it('uses the singular for one commit', () => {
-    expect(decidePush({ upstream: 'origin/x', ahead: 1 }, 'x').reason).toMatch(/1 commit that/)
+    expect(decidePush(plan({ ahead: 1 }), 'x').reason).toMatch(/1 commit that/)
   })
 
   it('requires nothing when the branch is up to date', () => {
-    expect(decidePush({ upstream: 'origin/x', ahead: 0 }, 'x').needed).toBe(false)
+    expect(decidePush(plan(), 'x').needed).toBe(false)
+  })
+
+  /**
+   * A branch created from `dev` keeps `origin/dev` as its upstream while
+   * pushing to its own name. Judged on the upstream, a branch that had never
+   * been pushed looked pushed, and its commit count was measured against a
+   * branch it was not going to touch.
+   */
+  it('ignores an upstream pointing at another branch', () => {
+    const decision = decidePush(
+      plan({ exists: false, trackingElsewhere: 'origin/dev' }),
+      'games/word-scramble',
+    )
+
+    expect(decision.needed).toBe(true)
+    expect(decision.setUpstream).toBe(true)
+    expect(decision.reason).not.toContain('origin/dev')
+  })
+
+  it("names the branch's own ref in the reason, not the upstream", () => {
+    const decision = decidePush(
+      plan({ ref: 'origin/games/word-scramble', ahead: 16, trackingElsewhere: 'origin/dev' }),
+      'games/word-scramble',
+    )
+
+    expect(decision.reason).toContain('origin/games/word-scramble')
+    expect(decision.reason).not.toContain('origin/dev')
   })
 })
 
