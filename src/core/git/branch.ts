@@ -165,22 +165,55 @@ export async function summarizeBranch(
     )
   }
 
-  const numstat = await git.runRaw(['diff', '--numstat', `${mergeBase}..HEAD`])
-  let filesChanged = 0
+  /**
+   * Counted over this branch's own commits, not over the diff to the base.
+   *
+   * `git diff base...HEAD` includes anything merged in along the way. Merge
+   * `dev` into a feature branch and the pull request claims dev's work as its
+   * own: "60 files · +2624/-69" for a branch that touched twelve. The commit
+   * list already walks `--first-parent`, so the numbers now come from the same
+   * walk, with merge commits themselves left out.
+   *
+   * The consequence is that a line edited by two commits counts twice, where a
+   * diff would net them out. That is the honest reading of "what these commits
+   * changed", and it beats attributing someone else's branch to this one.
+   */
+  const perCommit = await git.runRaw([
+    'log',
+    '--first-parent',
+    '--no-merges',
+    '--numstat',
+    '--format=',
+    `${mergeBase}..HEAD`,
+  ])
+
+  const touched = new Map<string, { insertions: number; deletions: number }>()
   let insertions = 0
   let deletions = 0
 
-  for (const line of numstat.stdout.split('\n')) {
+  for (const line of perCommit.stdout.split('\n')) {
     if (!line.trim()) continue
-    const [ins = '', del = ''] = line.split('\t')
-    filesChanged++
+    const [ins = '', del = '', path = ''] = line.split('\t')
+    if (path === '') continue
+
+    const entry = touched.get(path) ?? { insertions: 0, deletions: 0 }
+    // A dash means binary, which has no line count to add.
+    if (ins !== '-') entry.insertions += Number(ins) || 0
+    if (del !== '-') entry.deletions += Number(del) || 0
+    touched.set(path, entry)
+
     if (ins !== '-') insertions += Number(ins) || 0
     if (del !== '-') deletions += Number(del) || 0
   }
 
-  const diffstat = (
-    await git.runRaw(['diff', '--stat', '--stat-width=80', `${mergeBase}..HEAD`])
-  ).stdout.trim()
+  const filesChanged = touched.size
+
+  // Built from the same walk rather than asking git for a second stat, so the
+  // list the model reads can never disagree with the totals beside it.
+  const diffstat = [...touched.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, counts]) => ` ${path} | +${counts.insertions} -${counts.deletions}`)
+    .join('\n')
 
   return {
     branch,
@@ -277,6 +310,69 @@ export async function upstreamStatus(git: Git): Promise<UpstreamStatus> {
   // `--left-right --count` prints "<behind>\t<ahead>" for upstream...HEAD.
   const [behind = '0', ahead = '0'] = counts.stdout.trim().split(/\s+/)
   return { upstream, ahead: Number(ahead) || 0, behind: Number(behind) || 0 }
+}
+
+/**
+ * What `git push <remote> <branch>` will actually do.
+ *
+ * The tracking ref is not the answer to that question, and treating it as one
+ * produced the worst message this tool has printed: a branch configured to
+ * track `origin/dev` was told its sixteen commits were being pushed "to
+ * origin/dev". They were not — a push names the branch, so they were only ever
+ * going to `origin/games/word-scramble` — but nobody should have to know that
+ * to trust the line on their screen.
+ *
+ * A branch can track anything. Created from `dev` with `--track`, or pointed
+ * somewhere by hand, it keeps that upstream while pushing to its own name. So
+ * everything here is derived from the ref the push writes to, and the tracking
+ * ref appears only to be flagged when it disagrees.
+ */
+export interface PushPlan {
+  /** Where the push writes, e.g. `origin/games/word-scramble`. */
+  ref: string
+  /** Whether that branch is already on the remote. */
+  exists: boolean
+  /** Commits HEAD has that the remote branch does not. Zero when it is new. */
+  ahead: number
+  /** The tracking ref, when it names something other than `ref`. */
+  trackingElsewhere: string | null
+}
+
+export async function planPush(
+  git: Git,
+  remote: string,
+  branch: string,
+): Promise<PushPlan> {
+  const ref = `${remote}/${branch}`
+
+  const remoteRef = await git.runRaw([
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `refs/remotes/${ref}`,
+  ])
+  const exists = remoteRef.code === 0
+
+  let ahead = 0
+  if (exists) {
+    const counted = await git.runRaw(['rev-list', '--count', `${ref}..HEAD`])
+    if (counted.code === 0) ahead = Number(counted.stdout.trim()) || 0
+  }
+
+  const upstream = await git.runRaw([
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{u}',
+  ])
+  const tracking = upstream.code === 0 ? upstream.stdout.trim() : null
+
+  return {
+    ref,
+    exists,
+    ahead,
+    trackingElsewhere: tracking !== null && tracking !== ref ? tracking : null,
+  }
 }
 
 /** Push the current branch, setting upstream when it has none. */

@@ -97,9 +97,12 @@ describe('merged-in branches', () => {
     expect(buildPrPrompt(summary)).not.toContain('Merged in from other branches')
   })
 
-  it('notes merges in the footer', async () => {
+  // "includes 1 merge(s)" read as though the merge's diff was in the totals
+  // beside it. It is not, and a reader deciding whether the numbers look right
+  // needs to know which.
+  it('says in the footer that a merge was not counted', async () => {
     const draft = await createPrDraft(merged, defaultConfig(), stubProvider(response))
-    expect(draft.body).toContain('includes 1 merge(s)')
+    expect(draft.body).toContain('1 merge not counted')
   })
 })
 
